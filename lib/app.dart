@@ -1,0 +1,24 @@
+import 'package:flutter/material.dart';
+
+import 'core/app_services.dart';
+import 'ui/home/home_page.dart';
+import 'ui/theme/app_theme.dart';
+
+class ShiquApp extends StatelessWidget {
+  const ShiquApp({super.key, required this.services});
+
+  final AppServices services;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppScope(
+      services: services,
+      child: MaterialApp(
+        title: '拾趣',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        home: const HomePage(),
+      ),
+    );
+  }
+}

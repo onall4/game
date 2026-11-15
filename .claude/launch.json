@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8600", "--bind", "127.0.0.1", "--directory", "build/web"],
+      "port": 8600,
+      "url": "http://127.0.0.1:8600"
+    }
+  ]
+}
