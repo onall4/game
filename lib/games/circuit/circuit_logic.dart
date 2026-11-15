@@ -100,6 +100,29 @@ class CircuitPuzzle {
     turns ?? List.filled(tiles.length, 0),
   );
 
+  /// 从 [toJson] 的结果恢复；数据不合法时抛出异常。
+  factory CircuitPuzzle.fromJson(Map<String, dynamic> json) {
+    final size = json['size'] as int;
+    final tiles = List<int>.from(json['tiles'] as List);
+    final turns = List<int>.from(json['turns'] as List);
+    final source = json['source'] as int;
+    if (tiles.length != size * size || turns.length != tiles.length) {
+      throw const FormatException('回路存档尺寸不匹配');
+    }
+    return CircuitPuzzle._(size, source, tiles, turns)
+      .._locked.addAll(List<int>.from(json['locked'] as List? ?? const []))
+      .._moves = json['moves'] as int? ?? 0;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'size': size,
+    'source': source,
+    'tiles': _tiles,
+    'turns': [for (final t in _turns) t % 4],
+    'locked': _locked.toList(),
+    'moves': _moves,
+  };
+
   final int size;
   final int source;
 

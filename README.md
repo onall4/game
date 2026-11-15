@@ -29,6 +29,11 @@ python -m http.server 8600 --bind 127.0.0.1 --directory build/web
 > 如果本机设置了 `HTTP_PROXY`，`flutter test` 可能因为本地回环请求被代理而失败，
 > 运行前设置 `NO_PROXY=127.0.0.1,localhost` 即可。
 
+## 更新到 Android 手机（保留存档）
+
+用 `flutter run --release`，或把 `build/app/outputs/flutter-apk/app-release.apk` 发到手机上点开安装，都是覆盖更新、存档保留。
+不要用 `flutter install`：它会先卸载旧版本，存档会被清空。
+
 ## 目录结构
 
 ```

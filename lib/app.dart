@@ -17,6 +17,11 @@ class ShiquApp extends StatelessWidget {
         title: '拾趣',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
+        // 游戏界面布局紧凑，限制系统字体放大倍数，避免大字体手机上换行错位
+        builder: (context, child) => MediaQuery.withClampedTextScaling(
+          maxScaleFactor: 1.15,
+          child: child!,
+        ),
         home: const HomePage(),
       ),
     );

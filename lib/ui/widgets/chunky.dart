@@ -253,21 +253,53 @@ class StatPill extends StatelessWidget {
       radius: 14,
       shadow: 3,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: AppColors.ink),
-          const SizedBox(width: 6),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label, style: AppText.caption.copyWith(fontSize: 10)),
-              Text(value, style: AppText.number.copyWith(fontSize: 16)),
-            ],
-          ),
-        ],
+      // 空间不足时（窄屏/大字体）整体等比缩小，而不是换行或溢出
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: AppColors.ink),
+            const SizedBox(width: 6),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  style: AppText.caption.copyWith(fontSize: 10),
+                ),
+                Text(
+                  value,
+                  maxLines: 1,
+                  style: AppText.number.copyWith(fontSize: 16),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+/// 游戏顶部的数据条：各数据块等宽平分一行。
+class StatBar extends StatelessWidget {
+  const StatBar({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final (i, child) in children.indexed) ...[
+          if (i > 0) const SizedBox(width: 10),
+          Expanded(child: child),
+        ],
+      ],
     );
   }
 }

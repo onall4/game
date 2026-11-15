@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -76,12 +77,7 @@ void main() {
     });
 
     test('生成的密码满足配置', () {
-      const cfg = CodeConfig(
-        length: 4,
-        symbols: 10,
-        maxAttempts: 10,
-        allowRepeat: false,
-      );
+      const cfg = CodeConfig(length: 4, symbols: 10, allowRepeat: false);
       for (var seed = 0; seed < 50; seed++) {
         final g = CodeBreakerGame(cfg, random: Random(seed));
         expect(g.secret.length, 4);
@@ -90,28 +86,47 @@ void main() {
       }
     });
 
-    test('胜负判定与校验', () {
-      const cfg = CodeConfig(
-        length: 3,
-        symbols: 6,
-        firstSymbol: 1,
-        maxAttempts: 2,
-        allowRepeat: false,
-      );
-      final g = CodeBreakerGame(cfg, secret: [1, 2, 3]);
+    const easy = CodeConfig(
+      length: 3,
+      symbols: 6,
+      firstSymbol: 1,
+      allowRepeat: false,
+    );
+
+    test('不限次数，猜中才结束', () {
+      final g = CodeBreakerGame(easy, secret: [1, 2, 3]);
       expect(g.validate([1, 2]), GuessError.incomplete);
       expect(g.validate([1, 1, 2]), GuessError.repeated);
-      g.submit([3, 2, 1]);
-      expect(g.over, isFalse);
+      for (var i = 0; i < 20; i++) {
+        g.submit([4, 5, 6]);
+      }
+      expect(g.won, isFalse, reason: '20 次没猜中也不会判负');
       g.submit([1, 2, 3]);
       expect(g.won, isTrue);
-      expect(g.attemptsUsed, 2);
+      expect(g.attemptsUsed, 21);
+      expect(() => g.submit([1, 2, 3]), throwsStateError);
+    });
 
-      final g2 = CodeBreakerGame(cfg, secret: [1, 2, 3]);
-      g2.submit([4, 5, 6]);
-      g2.submit([6, 5, 4]);
-      expect(g2.lost, isTrue);
-      expect(() => g2.submit([1, 2, 3]), throwsStateError);
+    test('存档往返：重放历史，反馈一致', () {
+      final g = CodeBreakerGame(easy, secret: [2, 4, 6]);
+      g.submit([1, 2, 3]);
+      g.submit([6, 4, 2]);
+      final restored = CodeBreakerGame.fromJson(
+        easy,
+        jsonDecode(jsonEncode(g.toJson())) as Map<String, dynamic>,
+      );
+      expect(restored.secret, [2, 4, 6]);
+      expect(restored.attemptsUsed, 2);
+      expect(restored.history.last.feedback, const CodeFeedback(1, 2));
+    });
+
+    test('存档与模式不匹配时拒绝恢复', () {
+      const normal = CodeConfig(length: 4, symbols: 10, allowRepeat: false);
+      final g = CodeBreakerGame(normal, secret: [0, 7, 8, 9]);
+      expect(
+        () => CodeBreakerGame.fromJson(easy, g.toJson()),
+        throwsFormatException,
+      );
     });
   });
 
@@ -146,6 +161,45 @@ void main() {
       expect(g.completed, isTrue);
       expect(g.moves, 3);
       expect(g.bestCombo, 2);
+    });
+
+    test('存档往返：保留已配对、单张翻开与步数，错牌按盖回保存', () {
+      // 未洗牌：[0,0,1,1,2,2]
+      final g = MemoryGame(pairs: 3, symbols: [0, 1, 2]);
+      g.flip(0);
+      g.flip(1); // 配对
+      g.flip(2);
+      g.flip(4); // 错配，等待翻回
+      final saved = jsonDecode(jsonEncode(g.toJson())) as Map<String, dynamic>;
+      final r = MemoryGame.fromJson(saved);
+      expect(r.matchedPairs, 1);
+      expect(r.moves, 2);
+      expect(r.waiting, isFalse);
+      expect(r.cards[2].faceUp, isFalse);
+      expect(r.cards[4].faceUp, isFalse);
+
+      r.flip(3); // 单张翻开后再存
+      final r2 = MemoryGame.fromJson(r.toJson());
+      expect(r2.cards[3].faceUp, isTrue);
+      expect(r2.flip(2), FlipOutcome.match, reason: '恢复后能接着配对');
+    });
+  });
+
+  group('回路存档', () {
+    test('往返后格子、旋转、锁定与步数一致', () {
+      final p = CircuitPuzzle.generate(5, random: Random(3));
+      p.rotate(0);
+      p.rotate(0);
+      p.toggleLock(7);
+      final r = CircuitPuzzle.fromJson(
+        jsonDecode(jsonEncode(p.toJson())) as Map<String, dynamic>,
+      );
+      expect(r.moves, 2);
+      expect(r.isLocked(7), isTrue);
+      expect(r.poweredCount, p.poweredCount);
+      for (var i = 0; i < p.cellCount; i++) {
+        expect(r.maskAt(i), p.maskAt(i));
+      }
     });
   });
 }

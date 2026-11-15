@@ -29,13 +29,46 @@ class CircuitGame extends StatefulWidget {
 }
 
 class _CircuitGameState extends State<CircuitGame> {
-  late final CircuitPuzzle _puzzle = CircuitPuzzle.generate(
-    CircuitGame.sizeFor(widget.session.mode.id),
-  );
-  final GameClock _clock = GameClock();
+  late final CircuitPuzzle _puzzle;
+  late final GameClock _clock;
+
+  /// 是否值得保存进度：动过手，或者本来就是继续的上一局。
+  bool _touched = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final size = CircuitGame.sizeFor(widget.session.mode.id);
+    final saved = widget.session.savedState;
+    CircuitPuzzle? restored;
+    if (saved != null) {
+      try {
+        final p = CircuitPuzzle.fromJson(
+          (saved['puzzle'] as Map).cast<String, dynamic>(),
+        );
+        if (p.size == size && !p.solved) restored = p;
+      } catch (_) {
+        // 存档损坏或格式变化：直接开新局
+      }
+    }
+    _puzzle = restored ?? CircuitPuzzle.generate(size);
+    _touched = restored != null;
+    _clock = GameClock(
+      initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
+    );
+  }
+
+  void _save() {
+    _touched = true;
+    widget.session.saveProgress({
+      'elapsedMs': _clock.elapsedMs,
+      'puzzle': _puzzle.toJson(),
+    });
+  }
 
   @override
   void dispose() {
+    if (_touched && !_puzzle.solved) _save();
     _clock.dispose();
     super.dispose();
   }
@@ -61,6 +94,8 @@ class _CircuitGameState extends State<CircuitGame> {
           details: [('旋转次数', '${_puzzle.moves}')],
         ),
       );
+    } else {
+      _save();
     }
   }
 
@@ -68,6 +103,7 @@ class _CircuitGameState extends State<CircuitGame> {
     if (_puzzle.solved) return;
     AppScope.of(context).haptics.light();
     setState(() => _puzzle.toggleLock(i));
+    _save();
   }
 
   @override
@@ -76,7 +112,7 @@ class _CircuitGameState extends State<CircuitGame> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         children: [
-          Row(
+          StatBar(
             children: [
               ListenableBuilder(
                 listenable: _clock,
@@ -86,13 +122,11 @@ class _CircuitGameState extends State<CircuitGame> {
                   value: formatDuration(_clock.elapsedMs),
                 ),
               ),
-              const SizedBox(width: 10),
               StatPill(
                 icon: Icons.rotate_right_rounded,
                 label: '旋转',
                 value: '${_puzzle.moves}',
               ),
-              const Spacer(),
               StatPill(
                 icon: Icons.bolt_rounded,
                 label: '通电',

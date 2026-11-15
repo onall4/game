@@ -18,9 +18,15 @@ class GamePage extends StatefulWidget {
   State<GamePage> createState() => _GamePageState();
 }
 
+/// 一局游戏的“存档开关”：重开或完成后关闭，旧对局在销毁时就不会再写回进度。
+class _RoundHandle {
+  bool active = true;
+}
+
 class _GamePageState extends State<GamePage> {
   late GameMode _mode;
   int _round = 0;
+  _RoundHandle _handle = _RoundHandle();
   bool _initialized = false;
 
   @override
@@ -32,8 +38,17 @@ class _GamePageState extends State<GamePage> {
     _mode = widget.game.modeById(settings.lastMode(widget.game.id));
   }
 
-  void _restart() => setState(() => _round++);
+  /// 放弃当前对局（清除进度）并开始新的一局。
+  void _restart() {
+    _handle.active = false;
+    AppScope.of(context).progress.clear(widget.game.id, _mode.id);
+    setState(() {
+      _round++;
+      _handle = _RoundHandle();
+    });
+  }
 
+  /// 切换难度：当前难度的进度会被保留，切回来时继续。
   void _selectMode(GameMode mode) {
     if (mode.id == _mode.id) return;
     final services = AppScope.of(context);
@@ -42,7 +57,28 @@ class _GamePageState extends State<GamePage> {
     setState(() {
       _mode = mode;
       _round++;
+      _handle = _RoundHandle();
     });
+  }
+
+  GameSession _buildSession() {
+    final progress = AppScope.of(context).progress;
+    final gameId = widget.game.id;
+    // 固定住本局的模式与开关：切换难度后，旧对局销毁时仍写回它自己的进度
+    final modeId = _mode.id;
+    final handle = _handle;
+    return GameSession(
+      mode: _mode,
+      savedState: progress.load(gameId, modeId),
+      saveProgress: (state) {
+        if (handle.active) progress.save(gameId, modeId, state);
+      },
+      onFinish: (finish) {
+        handle.active = false;
+        progress.clear(gameId, modeId);
+        _handleFinish(finish);
+      },
+    );
   }
 
   Future<void> _handleFinish(GameFinish finish) async {
@@ -150,10 +186,7 @@ class _GamePageState extends State<GamePage> {
             Expanded(
               child: KeyedSubtree(
                 key: ValueKey('${_mode.id}#$_round'),
-                child: game.builder(
-                  context,
-                  GameSession(mode: _mode, onFinish: _handleFinish),
-                ),
+                child: game.builder(context, _buildSession()),
               ),
             ),
           ],

@@ -3,17 +3,20 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 /// 游戏计时器：首次操作时开始，应用切到后台自动暂停。
+///
+/// 继续上一局时传入 [initialElapsedMs]，从上次的用时接着计。
 class GameClock extends ChangeNotifier with WidgetsBindingObserver {
-  GameClock() {
+  GameClock({int initialElapsedMs = 0}) : _initialMs = initialElapsedMs {
     WidgetsBinding.instance.addObserver(this);
   }
 
+  final int _initialMs;
   final Stopwatch _watch = Stopwatch();
   Timer? _ticker;
   bool _started = false;
   bool _stopped = false;
 
-  int get elapsedMs => _watch.elapsedMilliseconds;
+  int get elapsedMs => _initialMs + _watch.elapsedMilliseconds;
   bool get isRunning => _watch.isRunning;
   bool get started => _started;
 

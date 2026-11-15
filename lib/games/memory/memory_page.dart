@@ -49,12 +49,48 @@ class MemoryGameView extends StatefulWidget {
 }
 
 class _MemoryGameViewState extends State<MemoryGameView> {
-  late final (int, int) _grid = MemoryGameView.gridFor(widget.session.mode.id);
-  late final MemoryGame _game = MemoryGame(pairs: _grid.$1 * _grid.$2 ~/ 2);
-  final GameClock _clock = GameClock();
+  late final (int, int) _grid;
+  late final MemoryGame _game;
+  late final GameClock _clock;
+
+  /// 是否值得保存进度：动过手，或者本来就是继续的上一局。
+  bool _touched = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _grid = MemoryGameView.gridFor(widget.session.mode.id);
+    final pairs = _grid.$1 * _grid.$2 ~/ 2;
+    final saved = widget.session.savedState;
+    MemoryGame? restored;
+    if (saved != null) {
+      try {
+        final g = MemoryGame.fromJson(
+          (saved['game'] as Map).cast<String, dynamic>(),
+        );
+        if (g.pairs == pairs && !g.completed) restored = g;
+      } catch (_) {
+        // 存档损坏或格式变化：直接开新局
+      }
+    }
+    _game = restored ?? MemoryGame(pairs: pairs);
+    _touched = restored != null;
+    _clock = GameClock(
+      initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
+    );
+  }
+
+  void _save() {
+    _touched = true;
+    widget.session.saveProgress({
+      'elapsedMs': _clock.elapsedMs,
+      'game': _game.toJson(),
+    });
+  }
 
   @override
   void dispose() {
+    if (_touched && !_game.completed) _save();
     _clock.dispose();
     super.dispose();
   }
@@ -81,6 +117,7 @@ class _MemoryGameViewState extends State<MemoryGameView> {
       case FlipOutcome.ignored:
         break;
     }
+    if (!_game.completed) _save();
   }
 
   void _finish() {
@@ -106,14 +143,13 @@ class _MemoryGameViewState extends State<MemoryGameView> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         children: [
-          Row(
+          StatBar(
             children: [
               StatPill(
                 icon: Icons.touch_app_outlined,
                 label: '步数',
                 value: '${_game.moves}',
               ),
-              const SizedBox(width: 10),
               ListenableBuilder(
                 listenable: _clock,
                 builder: (_, _) => StatPill(
@@ -122,7 +158,6 @@ class _MemoryGameViewState extends State<MemoryGameView> {
                   value: formatDuration(_clock.elapsedMs),
                 ),
               ),
-              const Spacer(),
               StatPill(
                 icon: Icons.style_outlined,
                 label: '配对',

@@ -27,6 +27,49 @@ class MemoryGame {
   MemoryGame({required this.pairs, Random? random, List<int>? symbols})
     : cards = _deal(pairs, random ?? Random(), symbols);
 
+  MemoryGame._restored(this.pairs, this.cards);
+
+  /// 从 [toJson] 的结果恢复；数据不合法时抛出异常。
+  factory MemoryGame.fromJson(Map<String, dynamic> json) {
+    final pairs = json['pairs'] as int;
+    final symbols = List<int>.from(json['symbols'] as List);
+    if (symbols.length != pairs * 2) {
+      throw const FormatException('翻翻乐存档牌数不匹配');
+    }
+    final game = MemoryGame._restored(pairs, [
+      for (final s in symbols) MemoryCard(s),
+    ]);
+    for (final i in List<int>.from(json['matched'] as List)) {
+      game.cards[i]
+        ..matched = true
+        ..faceUp = true;
+    }
+    final first = json['first'] as int?;
+    if (first != null && !game.cards[first].matched) {
+      game.cards[first].faceUp = true;
+      game._first = first;
+    }
+    game
+      .._moves = json['moves'] as int? ?? 0
+      .._combo = json['combo'] as int? ?? 0
+      .._bestCombo = json['bestCombo'] as int? ?? 0;
+    return game;
+  }
+
+  /// 序列化当前进度。正在等待翻回的两张错牌按“已盖回”保存。
+  Map<String, dynamic> toJson() => {
+    'pairs': pairs,
+    'symbols': [for (final c in cards) c.symbol],
+    'matched': [
+      for (var i = 0; i < cards.length; i++)
+        if (cards[i].matched) i,
+    ],
+    'first': waiting ? null : _first,
+    'moves': _moves,
+    'combo': _combo,
+    'bestCombo': _bestCombo,
+  };
+
   final int pairs;
   final List<MemoryCard> cards;
 

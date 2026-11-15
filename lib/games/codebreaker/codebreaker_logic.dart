@@ -4,7 +4,6 @@ class CodeConfig {
   const CodeConfig({
     required this.length,
     required this.symbols,
-    required this.maxAttempts,
     required this.allowRepeat,
     this.firstSymbol = 0,
   });
@@ -14,7 +13,6 @@ class CodeConfig {
 
   /// 可用符号数量，符号为 [firstSymbol] .. firstSymbol+symbols-1
   final int symbols;
-  final int maxAttempts;
   final bool allowRepeat;
   final int firstSymbol;
 
@@ -71,10 +69,32 @@ CodeFeedback evaluate(List<int> secret, List<int> guess) {
 
 enum GuessError { incomplete, repeated }
 
-/// “密码锁”：根据每次尝试的反馈推理出隐藏密码。
+/// “密码锁”：根据每次尝试的反馈推理出隐藏密码。不限尝试次数，猜中为止。
 class CodeBreakerGame {
   CodeBreakerGame(this.config, {Random? random, List<int>? secret})
     : secret = secret ?? _generate(config, random ?? Random());
+
+  /// 从 [toJson] 的结果恢复（重放历史猜测）；数据不合法时抛出异常。
+  factory CodeBreakerGame.fromJson(
+    CodeConfig config,
+    Map<String, dynamic> json,
+  ) {
+    final secret = List<int>.from(json['secret'] as List);
+    final alphabet = config.alphabet.toSet();
+    if (secret.length != config.length || !secret.every(alphabet.contains)) {
+      throw const FormatException('密码锁存档与当前模式不匹配');
+    }
+    final game = CodeBreakerGame(config, secret: secret);
+    for (final guess in json['history'] as List) {
+      game.submit(List<int>.from(guess as List));
+    }
+    return game;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'secret': secret,
+    'history': [for (final row in _history) row.digits],
+  };
 
   final CodeConfig config;
   final List<int> secret;
@@ -82,12 +102,9 @@ class CodeBreakerGame {
 
   List<GuessRow> get history => List.unmodifiable(_history);
   int get attemptsUsed => _history.length;
-  int get attemptsLeft => config.maxAttempts - _history.length;
 
   bool get won =>
       _history.isNotEmpty && _history.last.feedback.exact == config.length;
-  bool get lost => !won && attemptsLeft <= 0;
-  bool get over => won || lost;
 
   GuessError? validate(List<int> guess) {
     if (guess.length != config.length) return GuessError.incomplete;
@@ -99,7 +116,7 @@ class CodeBreakerGame {
 
   /// 提交一次猜测；不合法时抛出 [ArgumentError]。
   GuessRow submit(List<int> guess) {
-    if (over) throw StateError('游戏已结束');
+    if (won) throw StateError('游戏已结束');
     final err = validate(guess);
     if (err != null) throw ArgumentError(err.name);
     final row = GuessRow(List.unmodifiable(guess), evaluate(secret, guess));

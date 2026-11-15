@@ -14,4 +14,8 @@ abstract final class StorageKeys {
   static const lastSyncedAt = 'sync.last_synced_at';
 
   static String lastMode(String gameId) => 'last_mode.$gameId';
+
+  /// 某个游戏某个模式下未完成对局的进度。
+  static String progress(String gameId, String modeId) =>
+      'progress.$gameId.$modeId';
 }

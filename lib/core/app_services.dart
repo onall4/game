@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import 'data/repositories/game_record_repository.dart';
 import 'data/repositories/player_repository.dart';
+import 'data/repositories/progress_repository.dart';
 import 'data/repositories/settings_repository.dart';
 import 'data/sync/result_outbox.dart';
 import 'data/sync/sync_service.dart';
@@ -17,6 +18,7 @@ class AppServices {
     required this.player,
     required this.records,
     required this.settings,
+    required this.progress,
     required this.outbox,
     required this.sync,
   }) : haptics = Haptics(settings);
@@ -35,11 +37,13 @@ class AppServices {
     final player = LocalPlayerRepository(store);
     final records = LocalGameRecordRepository(store, outbox);
     final settings = SettingsRepository(store);
+    final progress = ProgressRepository(store);
     return AppServices(
       store: store,
       player: player,
       records: records,
       settings: settings,
+      progress: progress,
       outbox: outbox,
       sync: const OfflineSyncService(),
     );
@@ -49,6 +53,9 @@ class AppServices {
   final PlayerRepository player;
   final GameRecordRepository records;
   final SettingsRepository settings;
+
+  /// 未完成对局的进度（用于“返回后继续上一局”）。
+  final ProgressRepository progress;
   final ResultOutbox outbox;
   final SyncService sync;
   final Haptics haptics;

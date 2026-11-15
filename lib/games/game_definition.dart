@@ -50,10 +50,23 @@ class GameFinish {
 
 /// 外壳传给具体游戏的上下文。
 class GameSession {
-  const GameSession({required this.mode, required this.onFinish});
+  const GameSession({
+    required this.mode,
+    required this.onFinish,
+    required this.saveProgress,
+    this.savedState,
+  });
 
   final GameMode mode;
   final void Function(GameFinish finish) onFinish;
+
+  /// 上次未完成的进度（由 [saveProgress] 保存）；为 null 时开始新游戏。
+  /// 内容格式由各游戏自行定义，解析失败时应直接开始新游戏。
+  final Map<String, dynamic>? savedState;
+
+  /// 保存当前进度。游戏应在每步操作后、以及离开页面（dispose）时调用；
+  /// 对局完成后不要再调用（外壳会自动清除进度）。
+  final void Function(Map<String, dynamic> state) saveProgress;
 }
 
 /// 在首页注册一个小游戏所需的全部信息。新增游戏只需：

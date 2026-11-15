@@ -35,7 +35,11 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         bottom: false,
         child: ListenableBuilder(
-          listenable: Listenable.merge([services.records, services.player]),
+          listenable: Listenable.merge([
+            services.records,
+            services.player,
+            services.progress,
+          ]),
           builder: (context, _) => CustomScrollView(
             slivers: [
               SliverPadding(
@@ -116,7 +120,11 @@ class _Header extends StatelessWidget {
             children: [
               Text('嗨，$nickname', style: AppText.caption),
               const SizedBox(height: 2),
-              const Text('今天玩点什么？', style: AppText.display),
+              const FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text('今天玩点什么？', maxLines: 1, style: AppText.display),
+              ),
             ],
           ),
         ),
@@ -231,6 +239,7 @@ class _GameCard extends StatelessWidget {
     final record = services.records.recordOf(game.id, game.scoreKind);
     final mode = game.modeById(services.settings.lastMode(game.id));
     final best = record.mode(mode.id).best;
+    final inProgress = services.progress.has(game.id, mode.id);
 
     return Pressable(
       onTap: onTap,
@@ -286,7 +295,9 @@ class _GameCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        best == null
+                        inProgress
+                            ? '${mode.label} · 继续上一局'
+                            : best == null
                             ? '${mode.label} · 还没有纪录'
                             : '${mode.label} · 最佳 ${game.scoreKind.format(best)}',
                         style: AppText.caption,

@@ -36,21 +36,10 @@ class CodeBreakerGameView extends StatefulWidget {
       length: 3,
       symbols: 6,
       firstSymbol: 1,
-      maxAttempts: 8,
       allowRepeat: false,
     ),
-    'hard' => const CodeConfig(
-      length: 4,
-      symbols: 10,
-      maxAttempts: 8,
-      allowRepeat: true,
-    ),
-    _ => const CodeConfig(
-      length: 4,
-      symbols: 10,
-      maxAttempts: 10,
-      allowRepeat: false,
-    ),
+    'hard' => const CodeConfig(length: 4, symbols: 10, allowRepeat: true),
+    _ => const CodeConfig(length: 4, symbols: 10, allowRepeat: false),
   };
 
   @override
@@ -59,10 +48,8 @@ class CodeBreakerGameView extends StatefulWidget {
 
 class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     with SingleTickerProviderStateMixin {
-  late final CodeBreakerGame _game = CodeBreakerGame(
-    CodeBreakerGameView.configFor(widget.session.mode.id),
-  );
-  final GameClock _clock = GameClock();
+  late final CodeBreakerGame _game;
+  late final GameClock _clock;
   final List<int> _input = [];
   final Set<int> _excluded = {};
   final ScrollController _scroll = ScrollController();
@@ -71,10 +58,69 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     duration: const Duration(milliseconds: 380),
   );
 
+  /// 是否值得保存进度：动过手，或者本来就是继续的上一局。
+  bool _touched = false;
+
   CodeConfig get _config => _game.config;
 
   @override
+  void initState() {
+    super.initState();
+    final config = CodeBreakerGameView.configFor(widget.session.mode.id);
+    final saved = widget.session.savedState;
+    CodeBreakerGame? restored;
+    if (saved != null) {
+      try {
+        final g = CodeBreakerGame.fromJson(
+          config,
+          (saved['game'] as Map).cast<String, dynamic>(),
+        );
+        if (!g.won) {
+          restored = g;
+          final alphabet = config.alphabet.toSet();
+          _excluded.addAll(
+            List<int>.from(saved['excluded'] as List? ?? const [])
+                .where(alphabet.contains),
+          );
+          final input = List<int>.from(saved['input'] as List? ?? const []);
+          if (input.length < config.length && input.every(alphabet.contains)) {
+            _input.addAll(input);
+          }
+        }
+      } catch (_) {
+        // 存档损坏或格式变化：直接开新局
+        _excluded.clear();
+        _input.clear();
+      }
+    }
+    _game = restored ?? CodeBreakerGame(config);
+    _touched = restored != null;
+    _clock = GameClock(
+      initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
+    );
+    if (restored != null && restored.history.isNotEmpty) {
+      // 继续上一局时，直接滚到最新一次试开
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scroll.hasClients) {
+          _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        }
+      });
+    }
+  }
+
+  void _save() {
+    _touched = true;
+    widget.session.saveProgress({
+      'elapsedMs': _clock.elapsedMs,
+      'game': _game.toJson(),
+      'input': _input,
+      'excluded': _excluded.toList(),
+    });
+  }
+
+  @override
   void dispose() {
+    if (_touched && !_game.won) _save();
     _clock.dispose();
     _scroll.dispose();
     _shake.dispose();
@@ -82,29 +128,32 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
   }
 
   void _press(int digit) {
-    if (_game.over || _input.length >= _config.length) return;
+    if (_game.won || _input.length >= _config.length) return;
     if (!_config.allowRepeat && _input.contains(digit)) return;
     _clock.start();
     AppScope.of(context).haptics.tap();
     setState(() => _input.add(digit));
+    _save();
   }
 
   void _toggleExclude(int digit) {
-    if (_game.over) return;
+    if (_game.won) return;
     AppScope.of(context).haptics.light();
     setState(() {
       if (!_excluded.remove(digit)) _excluded.add(digit);
     });
+    _save();
   }
 
   void _backspace() {
-    if (_input.isEmpty || _game.over) return;
+    if (_input.isEmpty || _game.won) return;
     AppScope.of(context).haptics.tap();
     setState(_input.removeLast);
+    _save();
   }
 
   void _submit() {
-    if (_game.over) return;
+    if (_game.won) return;
     final haptics = AppScope.of(context).haptics;
     if (_game.validate(_input) != null) {
       haptics.error();
@@ -125,17 +174,18 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
       }
     });
 
-    if (_game.over) {
+    if (_game.won) {
       _clock.stop();
       widget.session.onFinish(
         GameFinish(
-          won: _game.won,
+          won: true,
           score: _game.attemptsUsed,
           durationMs: _clock.elapsedMs,
           details: [('用时', formatDuration(_clock.elapsedMs))],
-          message: _game.won ? null : '正确密码是 ${_game.secret.join(' ')}',
         ),
       );
+    } else {
+      _save();
     }
   }
 
@@ -147,24 +197,25 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
         children: [
           Row(
             children: [
-              StatPill(
-                icon: Icons.key_rounded,
-                label: '剩余机会',
-                value: '${_game.attemptsLeft}',
-                color: _game.attemptsLeft <= 2 && !_game.over
-                    ? AppColors.coral
-                    : AppColors.paper,
-              ),
-              const SizedBox(width: 10),
-              ListenableBuilder(
-                listenable: _clock,
-                builder: (_, _) => StatPill(
-                  icon: Icons.timer_outlined,
-                  label: '用时',
-                  value: formatDuration(_clock.elapsedMs),
+              Expanded(
+                child: StatPill(
+                  icon: Icons.key_rounded,
+                  label: '已试',
+                  value: '${_game.attemptsUsed} 次',
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: _clock,
+                  builder: (_, _) => StatPill(
+                    icon: Icons.timer_outlined,
+                    label: '用时',
+                    value: formatDuration(_clock.elapsedMs),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
               const _Legend(),
             ],
           ),
@@ -180,11 +231,8 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
                       controller: _scroll,
                       itemCount: _game.history.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) => _HistoryRow(
-                        index: i + 1,
-                        row: _game.history[i],
-                        length: _config.length,
-                      ),
+                      itemBuilder: (context, i) =>
+                          _HistoryRow(index: i + 1, row: _game.history[i]),
                     ),
             ),
           ),
@@ -201,7 +249,7 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
             child: _InputRow(
               length: _config.length,
               input: _input,
-              revealed: _game.over ? _game.secret : null,
+              revealed: _game.won ? _game.secret : null,
             ),
           ),
           const SizedBox(height: 14),
@@ -213,38 +261,10 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
             onLongDigit: _toggleExclude,
             onBackspace: _backspace,
             onSubmit: _submit,
-            canSubmit: _input.length == _config.length && !_game.over,
+            canSubmit: _input.length == _config.length && !_game.won,
           ),
         ],
       ),
-    );
-  }
-}
-
-class _Legend extends StatelessWidget {
-  const _Legend();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Row(
-          children: [
-            const _Peg(state: _PegState.exact, size: 10),
-            const SizedBox(width: 4),
-            Text('位置对', style: AppText.caption.copyWith(fontSize: 11)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            const _Peg(state: _PegState.partial, size: 10),
-            const SizedBox(width: 4),
-            Text('数字对', style: AppText.caption.copyWith(fontSize: 11)),
-          ],
-        ),
-      ],
     );
   }
 }
@@ -258,54 +278,79 @@ class _EmptyHint extends StatelessWidget {
   Widget build(BuildContext context) {
     final first = config.alphabet.first, last = config.alphabet.last;
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: chunkyDecoration(color: AppColors.lavender, radius: 20),
-            child: const Icon(
-              Icons.lock_rounded,
-              size: 32,
-              color: AppColors.ink,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: chunkyDecoration(
+                color: AppColors.lavender,
+                radius: 20,
+              ),
+              child: const Icon(
+                Icons.lock_rounded,
+                size: 32,
+                color: AppColors.ink,
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Text('保险箱已上锁', style: AppText.subtitle),
-          const SizedBox(height: 6),
-          Text(
-            '密码共 ${config.length} 位，由 $first–$last 组成'
-            '${config.allowRepeat ? '，数字可能重复' : '，数字互不重复'}。\n'
-            '输入你的第一次猜测吧！长按数字键可以做排除标记。',
-            style: AppText.body,
-            textAlign: TextAlign.center,
-          ),
-        ],
+            const SizedBox(height: 14),
+            Text('保险箱已上锁', style: AppText.subtitle),
+            const SizedBox(height: 6),
+            Text(
+              '密码共 ${config.length} 位，由 $first–$last 组成'
+              '${config.allowRepeat ? '，数字可能重复' : '，数字互不重复'}。\n'
+              '输入你的第一次猜测吧！长按数字键可以做排除标记。',
+              style: AppText.body,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _HistoryRow extends StatelessWidget {
-  const _HistoryRow({
-    required this.index,
-    required this.row,
-    required this.length,
-  });
-
-  final int index;
-  final GuessRow row;
-  final int length;
+/// 右上角图例：说明两种颜色圆点的含义。
+class _Legend extends StatelessWidget {
+  const _Legend();
 
   @override
   Widget build(BuildContext context) {
-    final fb = row.feedback;
-    final pegs = <_PegState>[
-      for (var i = 0; i < fb.exact; i++) _PegState.exact,
-      for (var i = 0; i < fb.partial; i++) _PegState.partial,
-      for (var i = fb.exact + fb.partial; i < length; i++) _PegState.none,
-    ];
+    Widget item(Color color, String label) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _Dot(color: color, size: 10),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          maxLines: 1,
+          softWrap: false,
+          style: AppText.caption.copyWith(fontSize: 11),
+        ),
+      ],
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        item(AppColors.mint, '位置对'),
+        const SizedBox(height: 4),
+        item(AppColors.lemon, '数字对'),
+      ],
+    );
+  }
+}
+
+class _HistoryRow extends StatelessWidget {
+  const _HistoryRow({required this.index, required this.row});
+
+  final int index;
+  final GuessRow row;
+
+  @override
+  Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 260),
@@ -323,35 +368,106 @@ class _HistoryRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Row(
           children: [
-            SizedBox(width: 26, child: Text('#$index', style: AppText.caption)),
-            const SizedBox(width: 4),
-            for (final d in row.digits) ...[
-              _DigitToken(digit: d, size: 34),
-              const SizedBox(width: 6),
-            ],
-            const Spacer(),
             SizedBox(
-              width: 40,
-              child: Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                alignment: WrapAlignment.end,
-                children: [for (final p in pegs) _Peg(state: p)],
+              width: 28,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text('#$index', style: AppText.caption, maxLines: 1),
               ),
             ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 34,
-              child: Text(
-                '${fb.exact}A${fb.partial}B',
-                textAlign: TextAlign.right,
-                style: AppText.caption.copyWith(
-                  color: AppColors.ink,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+            const SizedBox(width: 4),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (i, d) in row.digits.indexed) ...[
+                        if (i > 0) const SizedBox(width: 6),
+                        _DigitToken(digit: d, size: 34),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
+            const SizedBox(width: 8),
+            _FeedbackSummary(feedback: row.feedback),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 单次试开的结果：绿点后是“位置对”的个数，黄点后是“数字对”的个数。
+class _FeedbackSummary extends StatelessWidget {
+  const _FeedbackSummary({required this.feedback});
+
+  final CodeFeedback feedback;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _DotCount(color: AppColors.mint, count: feedback.exact),
+        const SizedBox(width: 10),
+        _DotCount(color: AppColors.lemon, count: feedback.partial),
+      ],
+    );
+  }
+}
+
+class _DotCount extends StatelessWidget {
+  const _DotCount({required this.color, required this.count});
+
+  final Color color;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = count > 0;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _Dot(color: active ? color : null, size: 14),
+        const SizedBox(width: 4),
+        Text(
+          '$count',
+          maxLines: 1,
+          softWrap: false,
+          style: AppText.number.copyWith(
+            fontSize: 16,
+            color: active ? AppColors.ink : AppColors.inkFaint,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 彩色小圆点；[color] 为 null 时显示空心灰圈。
+class _Dot extends StatelessWidget {
+  const _Dot({required this.color, required this.size});
+
+  final Color? color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color ?? Colors.transparent,
+        border: Border.all(
+          color: color == null ? AppColors.inkFaint : AppColors.ink,
+          width: 1.8,
         ),
       ),
     );
