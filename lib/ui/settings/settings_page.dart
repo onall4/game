@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/app_services.dart';
+import '../../games/game_definition.dart';
 import '../../games/game_registry.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chunky.dart';
@@ -340,27 +341,43 @@ class _GameStatsTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
+          // 难度多时可左右滑动，与游戏内的难度选择一致
+          PeekRow(
+            gap: 6,
             children: [
               for (final m in game.modes)
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        m.label,
-                        style: AppText.caption.copyWith(fontSize: 11),
-                      ),
-                      Text(
-                        record.mode(m.id).best == null
-                            ? '—'
-                            : game.scoreKind.format(record.mode(m.id).best!),
-                        style: AppText.number.copyWith(fontSize: 15),
-                      ),
-                    ],
-                  ),
-                ),
+                _bestCell(m.label, record.mode(m.id).best, game),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bestCell(String label, int? best, GameDefinition game) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      decoration: BoxDecoration(
+        color: AppColors.cream,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              label,
+              maxLines: 1,
+              style: AppText.caption.copyWith(fontSize: 11),
+            ),
+          ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              best == null ? '—' : game.scoreKind.format(best),
+              maxLines: 1,
+              style: AppText.number.copyWith(fontSize: 15),
+            ),
           ),
         ],
       ),

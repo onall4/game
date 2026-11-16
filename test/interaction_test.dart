@@ -24,13 +24,13 @@ Finder _tiles() => find.descendant(
 void main() {
   testWidgets('难度条可以滑动，选中屏幕外的 10×10', (tester) async {
     await _openGame(tester, '回路');
-    expect(find.text('入门 · 4×4 电路板'), findsOneWidget);
+    expect(find.text('入门'), findsOneWidget);
 
     await tester.ensureVisible(find.text('10×10'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('10×10'));
     await tester.pumpAndSettle();
-    expect(find.text('大师 · 10×10 电路板'), findsOneWidget);
+    expect(find.text('大师'), findsOneWidget);
     expect(_tiles(), findsNWidgets(100));
     expect(tester.takeException(), isNull);
   });
@@ -52,7 +52,7 @@ void main() {
       expect(find.byIcon(Icons.lock_rounded), findsNWidgets(used));
     }
     expect(find.text('提示 0'), findsOneWidget);
-    expect(find.textContaining('提示已用完'), findsOneWidget);
+    expect(find.text('点击格子旋转导线'), findsOneWidget);
 
     // 被提示锁定的格子不能再转：旋转次数不变
     Finder rotations() => find.descendant(

@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import '../seed.dart';
+
 class CodeConfig {
   const CodeConfig({
     required this.length,
@@ -132,7 +134,8 @@ class CodeBreakerGame {
         (_) => alphabet[rng.nextInt(alphabet.length)],
       );
     }
-    final pool = [...alphabet]..shuffle(rng);
+    final pool = [...alphabet];
+    shuffleWith(pool, rng);
     return pool.take(config.length).toList();
   }
 }

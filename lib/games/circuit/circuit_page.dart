@@ -56,7 +56,9 @@ class _CircuitGameState extends State<CircuitGame> {
         // 存档损坏或格式变化：直接开新局
       }
     }
-    _puzzle = restored ?? CircuitPuzzle.generate(size);
+    _puzzle =
+        restored ??
+        CircuitPuzzle.generate(size, random: widget.session.createRandom());
     _clock = GameClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
     );
@@ -145,7 +147,6 @@ class _CircuitGameState extends State<CircuitGame> {
   String get _status {
     if (_puzzle.solved) return '全部点亮！';
     if (_picking) return '点一块格子，它会被转到正确方向并锁定';
-    if (_puzzle.hintsLeft <= 0) return '提示已用完 · 点击格子旋转导线';
     return '点击格子旋转导线';
   }
 

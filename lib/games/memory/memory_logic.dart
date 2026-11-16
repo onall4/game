@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import '../seed.dart';
+
 class MemoryCard {
   MemoryCard(this.symbol);
 
@@ -128,16 +130,18 @@ class MemoryGame {
   }
 
   static List<MemoryCard> _deal(int pairs, Random rng, List<int>? symbols) {
-    final chosen =
-        symbols ??
-        (List.generate(
-          _symbolPool,
-          (i) => i,
-        )..shuffle(rng)).take(pairs).toList();
+    final List<int> chosen;
+    if (symbols != null) {
+      chosen = symbols;
+    } else {
+      final pool = List.generate(_symbolPool, (i) => i);
+      shuffleWith(pool, rng);
+      chosen = pool.take(pairs).toList();
+    }
     final deck = [
       for (final s in chosen) ...[MemoryCard(s), MemoryCard(s)],
     ];
-    if (symbols == null) deck.shuffle(rng);
+    if (symbols == null) shuffleWith(deck, rng);
     return deck;
   }
 

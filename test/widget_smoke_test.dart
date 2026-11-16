@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:game/app.dart';
 import 'package:game/core/app_services.dart';
 import 'package:game/core/storage/key_value_store.dart';
+import 'package:game/core/data/repositories/progress_repository.dart';
+import 'package:game/games/circuit/circuit_logic.dart';
+import 'package:game/games/seed.dart';
 import 'package:game/games/game_registry.dart';
 import 'package:game/ui/widgets/chunky.dart';
 
@@ -56,6 +59,8 @@ void main() {
       await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
       expect(find.text('今天玩点什么？'), findsOneWidget);
+      // 首页卡片跟随上次选择的难度
+      expect(find.text('${game.modes.last.label} · 还没有纪录'), findsOneWidget);
     });
 
     testWidgets('「${game.title}」在窄屏 + 大字体下各难度都不溢出', (tester) async {
@@ -77,6 +82,32 @@ void main() {
       }
     });
   }
+
+  testWidgets('设置页各难度纪录在窄屏 + 大字体下不溢出，可左右滑动', (tester) async {
+    const width = 360.0;
+    await pumpApp(tester, size: const Size(width, 640), textScale: 1.3);
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+
+    for (final game in gameRegistry) {
+      await tester.scrollUntilVisible(
+        find.text(game.title),
+        200,
+        scrollable: find.byType(Scrollable).first, // 设置页主列表
+      );
+      await tester.pumpAndSettle();
+      final last = find.text(game.modes.last.label);
+      expect(
+        tester.getRect(last).left,
+        greaterThan(width),
+        reason: '难度多时最后一个应在右侧屏幕外，需要滑动查看',
+      );
+      await tester.ensureVisible(last);
+      await tester.pumpAndSettle();
+      expect(tester.getRect(last).right, lessThanOrEqualTo(width));
+      expect(tester.takeException(), isNull);
+    }
+  });
 
   testWidgets('密码锁：试开记录在窄屏 + 大字体下不溢出，且不限次数', (tester) async {
     await pumpApp(tester, size: const Size(360, 640), textScale: 1.3);
@@ -113,6 +144,36 @@ void main() {
     expect(find.textContaining(RegExp(r'\dA\dB')), findsNothing);
   });
 
+  testWidgets('回路：输入种子得到由种子决定的开局，退出再进来仍是这局', (tester) async {
+    final services = await pumpApp(tester);
+    await tester.tap(find.text('回路'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('回路')); // 点标题打开种子面板
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '1K7Q2XM');
+    await tester.tap(find.text('用这个种子开始'));
+    await tester.pumpAndSettle();
+    expect(find.text('#1K7Q2XM'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('返回')); // 离开时保存存档
+    await tester.pumpAndSettle();
+    final saved = services.progress.load('circuit', 'size4')!;
+    expect(saved[ProgressRepository.seedKey], '1K7Q2XM');
+    expect(saved[ProgressRepository.customSeedKey], isTrue);
+    final expected = CircuitPuzzle.generate(
+      4,
+      random: SeededRandom.forGame(GameSeed.tryParse('1K7Q2XM')!, 'size4'),
+    ).toJson();
+    final puzzle = (saved['puzzle'] as Map).cast<String, dynamic>();
+    expect(puzzle['tiles'], expected['tiles']);
+    expect(puzzle['turns'], expected['turns']);
+
+    await tester.tap(find.text('回路'));
+    await tester.pumpAndSettle();
+    expect(find.text('#1K7Q2XM'), findsOneWidget);
+  });
+
   testWidgets('返回后再进入继续上一局；重新开始换成新的一局', (tester) async {
     final services = await pumpApp(tester);
     Finder rotations() => find.descendant(
@@ -139,7 +200,6 @@ void main() {
 
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('继续上一局'), findsOneWidget);
     expect(services.progress.hasUnfinished('circuit', 'size4'), isTrue);
 
     await tester.tap(find.text('回路'));

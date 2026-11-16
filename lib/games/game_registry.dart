@@ -16,13 +16,13 @@ final List<GameDefinition> gameRegistry = [
     scoreKind: ScoreKind.timeMs,
     modes: const [
       // 模式 ID 会作为存储键：5×5/6×6/7×7 沿用最早的 ID，保留历史纪录
-      GameMode(id: 'size4', label: '4×4', description: '入门 · 4×4 电路板'),
-      GameMode(id: 'easy', label: '5×5', description: '简单 · 5×5 电路板'),
-      GameMode(id: 'normal', label: '6×6', description: '进阶 · 6×6 电路板'),
-      GameMode(id: 'hard', label: '7×7', description: '困难 · 7×7 电路板'),
-      GameMode(id: 'size8', label: '8×8', description: '烧脑 · 8×8 电路板'),
-      GameMode(id: 'size9', label: '9×9', description: '专家 · 9×9 电路板'),
-      GameMode(id: 'size10', label: '10×10', description: '大师 · 10×10 电路板'),
+      GameMode(id: 'size4', label: '4×4', description: '入门'),
+      GameMode(id: 'easy', label: '5×5', description: '简单'),
+      GameMode(id: 'normal', label: '6×6', description: '进阶'),
+      GameMode(id: 'hard', label: '7×7', description: '困难'),
+      GameMode(id: 'size8', label: '8×8', description: '烧脑'),
+      GameMode(id: 'size9', label: '9×9', description: '专家'),
+      GameMode(id: 'size10', label: '10×10', description: '大师'),
     ],
     rules: const [
       '中央的闪电是电源，每个格子里都是一段导线。',

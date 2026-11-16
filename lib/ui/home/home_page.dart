@@ -38,7 +38,7 @@ class _HomePageState extends State<HomePage> {
           listenable: Listenable.merge([
             services.records,
             services.player,
-            services.progress,
+            services.settings, // 卡片显示上次选择的难度
           ]),
           builder: (context, _) => CustomScrollView(
             slivers: [
@@ -239,7 +239,6 @@ class _GameCard extends StatelessWidget {
     final record = services.records.recordOf(game.id, game.scoreKind);
     final mode = game.modeById(services.settings.lastMode(game.id));
     final best = record.mode(mode.id).best;
-    final inProgress = services.progress.hasUnfinished(game.id, mode.id);
 
     return Pressable(
       onTap: onTap,
@@ -295,9 +294,7 @@ class _GameCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        inProgress
-                            ? '${mode.label} · 继续上一局'
-                            : best == null
+                        best == null
                             ? '${mode.label} · 还没有纪录'
                             : '${mode.label} · 最佳 ${game.scoreKind.format(best)}',
                         style: AppText.caption,

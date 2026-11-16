@@ -24,8 +24,10 @@ class SettingsRepository extends ChangeNotifier {
   String? lastMode(String gameId) =>
       _store.getString(StorageKeys.lastMode(gameId));
 
-  Future<void> setLastMode(String gameId, String modeId) =>
-      _store.setString(StorageKeys.lastMode(gameId), modeId);
+  Future<void> setLastMode(String gameId, String modeId) async {
+    await _store.setString(StorageKeys.lastMode(gameId), modeId);
+    notifyListeners();
+  }
 
   Future<void> _save() =>
       _store.setJson(StorageKeys.settings, {'haptics': _haptics});

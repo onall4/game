@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/app_services.dart';
 import '../../core/data/models/game_result.dart';
 import '../../core/data/repositories/game_record_repository.dart';
 import '../../core/data/repositories/progress_repository.dart';
 import '../../games/game_definition.dart';
+import '../../games/seed.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chunky.dart';
 import 'result_sheet.dart';
@@ -24,8 +26,16 @@ class GamePage extends StatefulWidget {
 /// [active] 为 false 表示这一局已被放弃（重新开始），旧对局销毁时不再写回存档；
 /// [resultJson] 是已完成对局的结算数据，之后每次保存都会一并写入。
 class _RoundHandle {
+  _RoundHandle({this.seed, this.customSeed = false});
+
   bool active = true;
   Map<String, dynamic>? resultJson;
+
+  /// 本局种子；恢复旧版（还没有种子的）存档时为 null。
+  final GameSeed? seed;
+
+  /// 由玩家输入的指定种子开始：不计入纪录。
+  final bool customSeed;
 }
 
 /// 已完成的一局：保留结算数据，供玩家收起弹窗后、或下次进入时再次查看。
@@ -53,13 +63,22 @@ class _GamePageState extends State<GamePage> {
     _loadRound();
   }
 
-  /// 为当前模式准备新的一局句柄；若存档里是已完成的对局，同时恢复结算数据。
+  /// 为当前模式准备一局的句柄：有存档时沿用存档里的种子，没有则随机抽一个；
+  /// 若存档里是已完成的对局，同时恢复结算数据。
   void _loadRound() {
     final services = AppScope.of(context);
-    _handle = _RoundHandle();
     _result = null;
     final saved = services.progress.load(widget.game.id, _mode.id);
-    final raw = saved?[ProgressRepository.resultKey];
+    if (saved == null) {
+      _handle = _RoundHandle(seed: GameSeed.random(widget.game.seedVersion));
+      return;
+    }
+    final rawSeed = saved[ProgressRepository.seedKey];
+    _handle = _RoundHandle(
+      seed: rawSeed is String ? GameSeed.tryParse(rawSeed) : null,
+      customSeed: saved[ProgressRepository.customSeedKey] == true,
+    );
+    final raw = saved[ProgressRepository.resultKey];
     if (raw is! Map) return;
     try {
       final json = raw.cast<String, dynamic>();
@@ -83,12 +102,17 @@ class _GamePageState extends State<GamePage> {
   }
 
   /// 放弃当前对局（清除存档）并开始新的一局。
-  void _restart() {
+  ///
+  /// 不传 [seed] 时随机抽一个种子；传入的是玩家指定的种子，这局不计入纪录。
+  void _restart({GameSeed? seed}) {
     _handle.active = false;
     AppScope.of(context).progress.clear(widget.game.id, _mode.id);
     setState(() {
       _round++;
-      _handle = _RoundHandle();
+      _handle = _RoundHandle(
+        seed: seed ?? GameSeed.random(widget.game.seedVersion),
+        customSeed: seed != null,
+      );
       _result = null;
     });
   }
@@ -112,13 +136,17 @@ class _GamePageState extends State<GamePage> {
     // 固定住本局的模式与句柄：切换难度后，旧对局销毁时仍写回它自己的存档
     final modeId = _mode.id;
     final handle = _handle;
+    final seed = handle.seed;
     return GameSession(
       mode: _mode,
+      seed: seed,
       savedState: progress.load(gameId, modeId),
       saveProgress: (state) {
         if (!handle.active) return;
         progress.save(gameId, modeId, {
           ...state,
+          if (seed != null) ProgressRepository.seedKey: seed.code,
+          if (handle.customSeed) ProgressRepository.customSeedKey: true,
           if (handle.resultJson != null)
             ProgressRepository.resultKey: handle.resultJson,
         });
@@ -134,18 +162,27 @@ class _GamePageState extends State<GamePage> {
   ) async {
     final services = AppScope.of(context);
     final gameId = widget.game.id;
-    final result = GameResult(
-      gameId: gameId,
-      modeId: modeId,
-      won: finish.won,
-      score: finish.score,
-      scoreKind: widget.game.scoreKind,
-      durationMs: finish.durationMs,
-      assisted: finish.assisted,
-    );
-    final RecordOutcome outcome = await services.records.recordResult(result);
-    // 接入服务器后，这里会在后台把结果推送上去；离线模式下是空操作。
-    services.sync.sync();
+    final RecordOutcome outcome;
+    if (handle.customSeed) {
+      // 指定种子的对局不计入纪录（局数、胜场、最佳、时长），也不上传
+      outcome = RecordOutcome(
+        record: services.records.recordOf(gameId, widget.game.scoreKind),
+        isNewBest: false,
+      );
+    } else {
+      final result = GameResult(
+        gameId: gameId,
+        modeId: modeId,
+        won: finish.won,
+        score: finish.score,
+        scoreKind: widget.game.scoreKind,
+        durationMs: finish.durationMs,
+        assisted: finish.assisted,
+      );
+      outcome = await services.records.recordResult(result);
+      // 接入服务器后，这里会在后台把结果推送上去；离线模式下是空操作。
+      services.sync.sync();
+    }
     finish.won ? services.haptics.success() : services.haptics.error();
 
     // 把结算数据写进这一局的存档：退出再进来仍是完成画面，奖杯可查看成绩
@@ -179,7 +216,23 @@ class _GamePageState extends State<GamePage> {
       mode: _mode,
       finish: result.finish,
       outcome: result.outcome,
+      seed: _handle.seed,
+      customSeed: _handle.customSeed,
     );
+  }
+
+  /// 种子面板：复制本局种子，或输入种子开始新的一局。
+  Future<void> _showSeedSheet() async {
+    AppScope.of(context).haptics.tap();
+    final seed = await showModalBottomSheet<GameSeed>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) =>
+          _SeedSheet(game: widget.game, current: _handle.seed),
+    );
+    if (seed == null || !mounted) return;
+    _restart(seed: seed);
   }
 
   void _showRules() {
@@ -208,18 +261,44 @@ class _GamePageState extends State<GamePage> {
                     onTap: () => Navigator.of(context).pop(),
                   ),
                   const SizedBox(width: 12),
+                  // 点标题区域打开种子面板
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(game.title, style: AppText.title),
-                        Text(
-                          _mode.description,
-                          style: AppText.caption,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    child: Semantics(
+                      button: true,
+                      label: '种子',
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _showSeedSheet,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(game.title, style: AppText.title),
+                            Row(
+                              children: [
+                                if (_handle.seed case final seed?) ...[
+                                  Text(
+                                    '#${seed.code}',
+                                    maxLines: 1,
+                                    style: AppText.caption.copyWith(
+                                      color: AppColors.ink,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    _mode.description,
+                                    style: AppText.caption,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                   if (_result != null) ...[
@@ -344,7 +423,6 @@ class _ModeSelectorState extends State<_ModeSelector> {
 
   @override
   Widget build(BuildContext context) {
-    final modes = widget.modes;
     return Container(
       decoration: BoxDecoration(
         color: AppColors.creamDeep,
@@ -353,35 +431,15 @@ class _ModeSelectorState extends State<_ModeSelector> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14 - AppDims.border),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            const pad = 4.0, gap = 4.0;
-            final visible = modes.length <= 4 ? modes.length.toDouble() : 4.5;
-            final chipWidth =
-                (constraints.maxWidth - pad * 2 - gap * (visible.ceil() - 1)) /
-                visible;
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: modes.length <= 4
-                  ? const NeverScrollableScrollPhysics()
-                  : const BouncingScrollPhysics(),
-              padding: const EdgeInsets.all(pad),
-              child: Row(
-                children: [
-                  for (final (i, m) in modes.indexed) ...[
-                    if (i > 0) const SizedBox(width: gap),
-                    _chip(m, chipWidth),
-                  ],
-                ],
-              ),
-            );
-          },
+        child: PeekRow(
+          padding: const EdgeInsets.all(4),
+          children: [for (final m in widget.modes) _chip(m)],
         ),
       ),
     );
   }
 
-  Widget _chip(GameMode m, double width) {
+  Widget _chip(GameMode m) {
     final selected = m.id == widget.selected.id;
     return GestureDetector(
       key: _keyFor(m.id),
@@ -390,7 +448,6 @@ class _ModeSelectorState extends State<_ModeSelector> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
-        width: width,
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
         decoration: BoxDecoration(
           color: selected ? widget.color : Colors.transparent,
@@ -422,8 +479,14 @@ class _RulesSheet extends StatelessWidget {
 
   final GameDefinition game;
 
+  /// 所有游戏共有的一条：种子。
+  static const _seedRule =
+      '点标题下方的 # 种子可以复制；输入朋友的种子并选同一难度，'
+      '就能玩到同一局（指定种子的对局不计入纪录）。';
+
   @override
   Widget build(BuildContext context) {
+    final rules = [...game.rules, _seedRule];
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -447,7 +510,7 @@ class _RulesSheet extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final (i, rule) in game.rules.indexed)
+                      for (final (i, rule) in rules.indexed)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Row(
@@ -494,6 +557,147 @@ class _RulesSheet extends StatelessWidget {
                 onTap: () => Navigator.of(context).pop(),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 种子面板：显示并复制本局种子；输入种子后开始新的一局（不计入纪录）。
+class _SeedSheet extends StatefulWidget {
+  const _SeedSheet({required this.game, required this.current});
+
+  final GameDefinition game;
+  final GameSeed? current;
+
+  @override
+  State<_SeedSheet> createState() => _SeedSheetState();
+}
+
+class _SeedSheetState extends State<_SeedSheet> {
+  final _controller = TextEditingController();
+  String? _error;
+  bool _copied = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _copy(GameSeed seed) {
+    Clipboard.setData(ClipboardData(text: seed.code));
+    AppScope.of(context).haptics.tap();
+    setState(() => _copied = true);
+  }
+
+  void _start() {
+    final seed = GameSeed.tryParse(_controller.text);
+    final current = widget.game.seedVersion;
+    final error = switch (seed) {
+      null => '种子格式不对',
+      GameSeed(:final version) when version > current => '这个种子来自更新的版本，请先更新 app',
+      GameSeed(:final version) when version < current => '这个种子来自旧版本，已不再支持',
+      _ => null,
+    };
+    if (error != null) {
+      AppScope.of(context).haptics.error();
+      setState(() => _error = error);
+      return;
+    }
+    Navigator.of(context).pop(seed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final game = widget.game;
+    final current = widget.current;
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: AppColors.ink, width: 2),
+    );
+    return Padding(
+      // 键盘弹出时整体上移
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: ChunkyBox(
+            color: AppColors.cream,
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    TagChip(label: '种子', color: game.color),
+                    const SizedBox(width: 10),
+                    Text(game.title, style: AppText.title),
+                  ],
+                ),
+                if (current != null) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('#${current.code}', style: AppText.number),
+                      ),
+                      ChunkyButton(
+                        label: _copied ? '已复制' : '复制',
+                        icon: _copied
+                            ? Icons.check_rounded
+                            : Icons.copy_rounded,
+                        color: AppColors.paper,
+                        onTap: () => _copy(current),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _controller,
+                  maxLength: 12,
+                  textCapitalization: TextCapitalization.characters,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  style: AppText.subtitle,
+                  decoration: InputDecoration(
+                    hintText: '输入种子',
+                    filled: true,
+                    fillColor: AppColors.paper,
+                    counterText: '',
+                    errorText: _error,
+                    border: border,
+                    enabledBorder: border,
+                    focusedBorder: border.copyWith(
+                      borderSide: const BorderSide(
+                        color: AppColors.ink,
+                        width: 2.5,
+                      ),
+                    ),
+                  ),
+                  onChanged: (_) {
+                    if (_error != null) setState(() => _error = null);
+                  },
+                  onSubmitted: (_) => _start(),
+                ),
+                const SizedBox(height: 14),
+                ChunkyButton(
+                  label: '用这个种子开始',
+                  color: game.color,
+                  expand: true,
+                  onTap: _start,
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '指定种子的对局不计入纪录',
+                  style: AppText.caption,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),

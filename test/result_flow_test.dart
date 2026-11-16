@@ -126,4 +126,74 @@ void main() {
     expect(find.text('进行中'), findsOneWidget);
     expect(find.byTooltip('查看成绩'), findsNothing);
   });
+
+  Future<void> startWithSeed(WidgetTester tester, String input) async {
+    await tester.tap(find.text(_fakeGame.title));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), input);
+    await tester.tap(find.text('用这个种子开始'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('标题下显示本局种子，点开可看到并复制', (tester) async {
+    await enterGame(tester);
+    final header = find.textContaining(RegExp(r'^#[0-9A-Z]{7}$'));
+    expect(header, findsOneWidget);
+    final code = tester.widget<Text>(header).data!;
+
+    await tester.tap(find.text(_fakeGame.title));
+    await tester.pumpAndSettle();
+    expect(find.text('用这个种子开始'), findsOneWidget);
+    expect(find.text(code), findsNWidgets(2), reason: '标题下和面板里各一处');
+    await tester.tap(find.text('复制'));
+    await tester.pumpAndSettle();
+    expect(find.text('已复制'), findsOneWidget);
+  });
+
+  testWidgets('指定种子的对局不计入纪录；点刷新换回随机种子后正常计入', (tester) async {
+    await enterGame(tester);
+    await startWithSeed(tester, ' 1k7q-2xm ');
+    expect(find.text('#1K7Q2XM'), findsOneWidget, reason: '输入会被规范化');
+
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('挑战成功！'), findsOneWidget);
+    expect(find.text('指定种子，不计入纪录'), findsOneWidget);
+    expect(find.text('★ 新纪录'), findsNothing);
+    final record = services.records.recordOf('fake', ScoreKind.moves);
+    expect(record.plays, 0);
+    expect(record.mode('only').best, isNull);
+    expect(services.outbox.length, 0, reason: '也不进入待同步队列');
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    // 退出再进来：仍是这局，奖杯里同样标明不计入
+    await enterGame(tester);
+    expect(find.text('#1K7Q2XM'), findsOneWidget);
+    await tester.tap(find.byTooltip('查看成绩'));
+    await tester.pumpAndSettle();
+    expect(find.text('指定种子，不计入纪录'), findsOneWidget);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('重新开始'));
+    await tester.pumpAndSettle();
+    expect(find.text('#1K7Q2XM'), findsNothing, reason: '刷新后换成随机种子');
+    await tester.tap(find.text('完成'));
+    await tester.pumpAndSettle();
+    expect(find.text('指定种子，不计入纪录'), findsNothing);
+    expect(services.records.recordOf('fake', ScoreKind.moves).plays, 1);
+  });
+
+  testWidgets('种子格式不对或版本不符时提示，不开新局', (tester) async {
+    await enterGame(tester);
+    await startWithSeed(tester, 'abc');
+    expect(find.text('种子格式不对'), findsOneWidget);
+    expect(find.text('用这个种子开始'), findsOneWidget, reason: '面板不关闭');
+
+    await tester.enterText(find.byType(TextField), '2K7Q2XM');
+    await tester.tap(find.text('用这个种子开始'));
+    await tester.pumpAndSettle();
+    expect(find.text('这个种子来自更新的版本，请先更新 app'), findsOneWidget);
+  });
 }

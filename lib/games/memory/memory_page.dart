@@ -74,7 +74,9 @@ class _MemoryGameViewState extends State<MemoryGameView> {
         // 存档损坏或格式变化：直接开新局
       }
     }
-    _game = restored ?? MemoryGame(pairs: pairs);
+    _game =
+        restored ??
+        MemoryGame(pairs: pairs, random: widget.session.createRandom());
     _clock = GameClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
     );

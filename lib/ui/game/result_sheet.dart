@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/data/repositories/game_record_repository.dart';
 import '../../games/game_definition.dart';
+import '../../games/seed.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chunky.dart';
 
@@ -13,13 +14,21 @@ Future<void> showResultSheet(
   required GameMode mode,
   required GameFinish finish,
   required RecordOutcome outcome,
+  GameSeed? seed,
+  bool customSeed = false,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) =>
-        _ResultSheet(game: game, mode: mode, finish: finish, outcome: outcome),
+    builder: (_) => _ResultSheet(
+      game: game,
+      mode: mode,
+      finish: finish,
+      outcome: outcome,
+      seed: seed,
+      customSeed: customSeed,
+    ),
   );
 }
 
@@ -29,12 +38,16 @@ class _ResultSheet extends StatelessWidget {
     required this.mode,
     required this.finish,
     required this.outcome,
+    required this.seed,
+    required this.customSeed,
   });
 
   final GameDefinition game;
   final GameMode mode;
   final GameFinish finish;
   final RecordOutcome outcome;
+  final GameSeed? seed;
+  final bool customSeed;
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +107,10 @@ class _ResultSheet extends StatelessWidget {
                   const SizedBox(height: 12),
                   const TagChip(label: '★ 新纪录', color: AppColors.lemon),
                 ],
-                if (finish.assisted) ...[
+                if (customSeed) ...[
+                  const SizedBox(height: 10),
+                  Text('指定种子，不计入纪录', style: AppText.caption),
+                ] else if (finish.assisted) ...[
                   const SizedBox(height: 10),
                   Text('本局使用了提示，不计入最佳纪录', style: AppText.caption),
                 ],
@@ -112,6 +128,7 @@ class _ResultSheet extends StatelessWidget {
                       for (final (label, value) in finish.details)
                         _row(label, value),
                       _row('最佳纪录', best == null ? '暂无' : kind.format(best)),
+                      if (seed case final seed?) _row('种子', '#${seed.code}'),
                     ],
                   ),
                 ),

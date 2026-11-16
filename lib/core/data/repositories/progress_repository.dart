@@ -16,6 +16,12 @@ class ProgressRepository extends ChangeNotifier {
   /// 已完成对局的结算数据所在的键（由游戏外壳写入，具体游戏无需关心）。
   static const resultKey = '_result';
 
+  /// 本局种子码所在的键（由游戏外壳写入）。旧版存档没有这个键。
+  static const seedKey = '_seed';
+
+  /// 为 true 表示本局由玩家输入的指定种子开始，不计入纪录（由游戏外壳写入）。
+  static const customSeedKey = '_customSeed';
+
   final KeyValueStore _store;
   final Map<String, Map<String, dynamic>?> _cache = {};
 
@@ -26,7 +32,7 @@ class ProgressRepository extends ChangeNotifier {
 
   bool has(String gameId, String modeId) => load(gameId, modeId) != null;
 
-  /// 是否有一局还没完成（首页据此提示“继续上一局”）。
+  /// 是否有一局还没完成。
   bool hasUnfinished(String gameId, String modeId) {
     final state = load(gameId, modeId);
     return state != null && state[resultKey] == null;
@@ -48,7 +54,7 @@ class ProgressRepository extends ChangeNotifier {
     });
   }
 
-  /// 只在“有没有存档 / 是否已完成”发生变化时通知，避免每走一步都触发首页重建。
+  /// 只在“有没有存档 / 是否已完成”发生变化时通知，避免每走一步都通知监听者。
   void _update(String gameId, String modeId, VoidCallback change) {
     final before = (has(gameId, modeId), hasUnfinished(gameId, modeId));
     change();

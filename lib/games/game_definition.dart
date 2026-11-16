@@ -1,7 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter/widgets.dart';
 
 import '../core/data/models/score_kind.dart';
 import '../ui/theme/app_theme.dart';
+import 'seed.dart';
 
 enum GameCategory {
   puzzle('益智', AppColors.mint),
@@ -82,9 +85,20 @@ class GameSession {
     required this.onFinish,
     required this.saveProgress,
     this.savedState,
+    this.seed,
   });
 
   final GameMode mode;
+
+  /// 本局的种子。恢复旧版（还没有种子的）存档时为 null。
+  final GameSeed? seed;
+
+  /// 开新局时用来生成开局的随机数：同一种子、同一难度得到同一串数。
+  Random createRandom() {
+    final s = seed;
+    return s == null ? Random() : SeededRandom.forGame(s, mode.id);
+  }
+
   final void Function(GameFinish finish) onFinish;
 
   /// 上次的对局状态（由 [saveProgress] 保存，可能是已完成的对局）；
@@ -112,6 +126,7 @@ class GameDefinition {
     required this.rules,
     required this.builder,
     required this.coverBuilder,
+    this.seedVersion = 1,
   });
 
   /// 稳定的唯一 ID，会作为存储键和服务器字段，发布后不要修改。
@@ -125,6 +140,13 @@ class GameDefinition {
   final List<String> rules;
   final Widget Function(BuildContext context, GameSession session) builder;
   final WidgetBuilder coverBuilder;
+
+  /// 开局生成规则的版本，写在种子的第一位。
+  ///
+  /// 只要改动会让同一个种子生成出不同的开局（生成算法、[SeededRandom]、
+  /// 翻翻乐的图案数量等），就必须 +1；`test/seed_test.dart` 里的
+  /// 固定开局测试会在这种改动时失败，提醒这一点。
+  final int seedVersion;
 
   GameMode modeById(String? id) =>
       modes.firstWhere((m) => m.id == id, orElse: () => modes.first);

@@ -125,7 +125,9 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
         _cursor = 0;
       }
     }
-    _game = restored ?? CodeBreakerGame(config);
+    _game =
+        restored ??
+        CodeBreakerGame(config, random: widget.session.createRandom());
     _clock = GameClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
     );
@@ -373,7 +375,7 @@ class _EmptyHint extends StatelessWidget {
             Text(
               '密码共 ${config.length} 位，由 $first–$last 组成'
               '${config.allowRepeat ? '，数字可能重复' : '，数字互不重复'}。\n'
-              '输入你的第一次猜测吧！长按数字键可以做排除标记。',
+              '长按数字键可以做排除标记。',
               style: AppText.body,
               textAlign: TextAlign.center,
             ),

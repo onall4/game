@@ -285,6 +285,55 @@ class StatPill extends StatelessWidget {
   }
 }
 
+/// 一行等宽的格子（如难度选择、各难度纪录）。
+///
+/// 不超过 [maxVisible] 个时平分整行；更多时可左右滑动，
+/// 每屏露出约 [maxVisible] 个半，提示右边还有更多。
+class PeekRow extends StatelessWidget {
+  const PeekRow({
+    super.key,
+    required this.children,
+    this.gap = 4,
+    this.padding = EdgeInsets.zero,
+    this.maxVisible = 4,
+  });
+
+  final List<Widget> children;
+  final double gap;
+  final EdgeInsets padding;
+  final int maxVisible;
+
+  @override
+  Widget build(BuildContext context) {
+    final scrolls = children.length > maxVisible;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final visible = scrolls ? maxVisible + 0.5 : children.length.toDouble();
+        final width =
+            (constraints.maxWidth -
+                padding.horizontal -
+                gap * (visible.ceil() - 1)) /
+            visible;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: scrolls
+              ? const BouncingScrollPhysics()
+              : const NeverScrollableScrollPhysics(),
+          padding: padding,
+          child: Row(
+            children: [
+              for (final (i, child) in children.indexed) ...[
+                if (i > 0) SizedBox(width: gap),
+                SizedBox(width: width, child: child),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// 游戏顶部的数据条：各数据块等宽平分一行。
 class StatBar extends StatelessWidget {
   const StatBar({super.key, required this.children});
