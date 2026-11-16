@@ -127,21 +127,24 @@ void main() {
     expect(find.byTooltip('查看成绩'), findsNothing);
   });
 
+  final seedText = find.textContaining(RegExp(r'^#[0-9A-Z]{7}$'));
+
   Future<void> startWithSeed(WidgetTester tester, String input) async {
-    await tester.tap(find.text(_fakeGame.title));
+    await tester.tap(seedText);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), input);
     await tester.tap(find.text('用这个种子开始'));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('标题下显示本局种子，点开可看到并复制', (tester) async {
+  testWidgets('左上角显示种子和难度说明（不显示游戏名），点种子可复制', (tester) async {
     await enterGame(tester);
-    final header = find.textContaining(RegExp(r'^#[0-9A-Z]{7}$'));
-    expect(header, findsOneWidget);
-    final code = tester.widget<Text>(header).data!;
+    expect(seedText, findsOneWidget);
+    expect(find.text('测试模式'), findsOneWidget);
+    expect(find.text(_fakeGame.title), findsNothing);
+    final code = tester.widget<Text>(seedText).data!;
 
-    await tester.tap(find.text(_fakeGame.title));
+    await tester.tap(seedText);
     await tester.pumpAndSettle();
     expect(find.text('用这个种子开始'), findsOneWidget);
     expect(find.text(code), findsNWidgets(2), reason: '标题下和面板里各一处');

@@ -73,7 +73,11 @@ class SettingsPage extends StatelessWidget {
                           color: AppColors.creamDeep,
                           thickness: 1.5,
                         ),
-                      _GameStatsTile(gameIndex: i, services: services),
+                      _GameStatsTile(
+                        key: ValueKey('stats-${gameRegistry[i].id}'),
+                        gameIndex: i,
+                        services: services,
+                      ),
                     ],
                   ],
                 ),
@@ -306,7 +310,11 @@ class _ProfileCard extends StatelessWidget {
 }
 
 class _GameStatsTile extends StatelessWidget {
-  const _GameStatsTile({required this.gameIndex, required this.services});
+  const _GameStatsTile({
+    super.key,
+    required this.gameIndex,
+    required this.services,
+  });
 
   final int gameIndex;
   final AppServices services;

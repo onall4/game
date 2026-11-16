@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -8,17 +9,20 @@ import '../ui/widgets/chunky.dart';
 /// 游戏计时器：首次操作时开始，应用切到后台自动暂停。
 ///
 /// 继续上一局时传入 [initialElapsedMs]，从上次的用时接着计。
+/// [resolutionMs] 是界面显示的精度：显示的数字变化时才通知刷新。
 class GameClock extends ChangeNotifier with WidgetsBindingObserver {
-  GameClock({int initialElapsedMs = 0}) : _initialMs = initialElapsedMs {
+  GameClock({int initialElapsedMs = 0, this.resolutionMs = 1000})
+    : _initialMs = initialElapsedMs {
     WidgetsBinding.instance.addObserver(this);
   }
 
   final int _initialMs;
+  final int resolutionMs;
   final Stopwatch _watch = Stopwatch();
   Timer? _ticker;
   bool _started = false;
   bool _stopped = false;
-  int _lastShownSecond = -1;
+  int _lastShownTick = -1;
 
   int get elapsedMs => _initialMs + _watch.elapsedMilliseconds;
   bool get isRunning => _watch.isRunning;
@@ -39,11 +43,12 @@ class GameClock extends ChangeNotifier with WidgetsBindingObserver {
   void _resume() {
     if (!_started || _stopped || _watch.isRunning) return;
     _watch.start();
-    // 界面只显示到秒：秒数变化时才通知，避免每秒 4 次无意义的重建
-    _ticker ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
-      final second = elapsedMs ~/ 1000;
-      if (second != _lastShownSecond) {
-        _lastShownSecond = second;
+    // 显示的数字变化时才通知，避免无意义的重建
+    final period = resolutionMs >= 1000 ? 250 : max(16, resolutionMs ~/ 2);
+    _ticker ??= Timer.periodic(Duration(milliseconds: period), (_) {
+      final tick = elapsedMs ~/ resolutionMs;
+      if (tick != _lastShownTick) {
+        _lastShownTick = tick;
         notifyListeners();
       }
     });
@@ -76,9 +81,18 @@ class GameClock extends ChangeNotifier with WidgetsBindingObserver {
 
 /// 显示用时的数据块。单独放在 RepaintBoundary 里，每秒刷新时不会连带重绘整个游戏界面。
 class GameClockPill extends StatelessWidget {
-  const GameClockPill({super.key, required this.clock});
+  const GameClockPill({
+    super.key,
+    required this.clock,
+    this.format = formatDuration,
+    this.extraMs = 0,
+  });
 
   final GameClock clock;
+  final String Function(int ms) format;
+
+  /// 额外计入的时间（如点错的罚时）。
+  final int extraMs;
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +102,7 @@ class GameClockPill extends StatelessWidget {
         builder: (_, _) => StatPill(
           icon: Icons.timer_outlined,
           label: '用时',
-          value: formatDuration(clock.elapsedMs),
+          value: format(clock.elapsedMs + extraMs),
         ),
       ),
     );

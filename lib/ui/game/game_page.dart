@@ -261,7 +261,7 @@ class _GamePageState extends State<GamePage> {
                     onTap: () => Navigator.of(context).pop(),
                   ),
                   const SizedBox(width: 12),
-                  // 点标题区域打开种子面板
+                  // 左上角：第一行种子，第二行难度说明；点这里打开种子面板
                   Expanded(
                     child: Semantics(
                       button: true,
@@ -271,30 +271,26 @@ class _GamePageState extends State<GamePage> {
                         onTap: _showSeedSheet,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(game.title, style: AppText.title),
-                            Row(
-                              children: [
-                                if (_handle.seed case final seed?) ...[
-                                  Text(
-                                    '#${seed.code}',
-                                    maxLines: 1,
-                                    style: AppText.caption.copyWith(
-                                      color: AppColors.ink,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                                Expanded(
-                                  child: Text(
-                                    _mode.description,
-                                    style: AppText.caption,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                            if (_handle.seed case final seed?)
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '#${seed.code}',
+                                  maxLines: 1,
+                                  style: AppText.subtitle.copyWith(
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
-                              ],
+                              ),
+                            // 说明较长时换行显示，不截断
+                            Text(
+                              _mode.description,
+                              style: AppText.caption,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -481,7 +477,7 @@ class _RulesSheet extends StatelessWidget {
 
   /// 所有游戏共有的一条：种子。
   static const _seedRule =
-      '点标题下方的 # 种子可以复制；输入朋友的种子并选同一难度，'
+      '点左上角的 # 种子可以复制；输入朋友的种子并选同一难度，'
       '就能玩到同一局（指定种子的对局不计入纪录）。';
 
   @override

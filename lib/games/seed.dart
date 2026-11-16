@@ -113,6 +113,9 @@ class SeededRandom implements Random {
   static const _two32 = 4294967296; // 2^32，不用 1 << 32（Web 上会溢出成 1）
   int _state;
 
+  /// 当前内部状态。存进存档后用 `SeededRandom(state)` 恢复，可以接着生成同一串数。
+  int get state => _state;
+
   /// 下一个 32 位无符号整数。
   int nextUint32() {
     _state = (_state + 0x6D2B79F5) & _mask;

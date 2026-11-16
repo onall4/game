@@ -352,3 +352,47 @@ class StatBar extends StatelessWidget {
     );
   }
 }
+
+/// 提示按钮：显示剩余次数；选格子期间变成「取消」。
+class HintButton extends StatelessWidget {
+  const HintButton({
+    super.key,
+    required this.left,
+    required this.picking,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final int left;
+  final bool picking;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      enabled: enabled,
+      color: picking ? AppColors.lemon : AppColors.paper,
+      radius: 14,
+      shadow: 3,
+      semanticLabel: picking ? '取消提示' : '提示，剩余 $left 次',
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            picking ? Icons.close_rounded : Icons.lightbulb_outline_rounded,
+            size: 18,
+            color: AppColors.ink,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            picking ? '取消' : '提示 $left',
+            style: AppText.subtitle.copyWith(fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+}

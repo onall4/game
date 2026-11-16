@@ -9,7 +9,9 @@ import 'seed.dart';
 enum GameCategory {
   puzzle('益智', AppColors.mint),
   decode('解密', AppColors.lavender),
-  casual('休闲', AppColors.pink);
+  casual('休闲', AppColors.pink),
+  focus('专注', AppColors.sky),
+  math('计算', AppColors.coral);
 
   const GameCategory(this.label, this.color);
 

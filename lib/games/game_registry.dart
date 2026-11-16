@@ -4,6 +4,9 @@ import 'circuit/circuit_page.dart';
 import 'codebreaker/codebreaker_page.dart';
 import 'game_definition.dart';
 import 'memory/memory_page.dart';
+import 'onestroke/onestroke_page.dart';
+import 'schulte/schulte_page.dart';
+import 'twentyfour/twentyfour_page.dart';
 
 /// 所有已上架的小游戏。首页按此顺序展示。
 final List<GameDefinition> gameRegistry = [
@@ -89,5 +92,79 @@ final List<GameDefinition> gameRegistry = [
     ],
     builder: (context, session) => MemoryGameView(session: session),
     coverBuilder: (context) => const MemoryCover(),
+  ),
+  GameDefinition(
+    id: 'schulte',
+    title: '舒尔特方格',
+    tagline: '按顺序找出数字，练专注和眼力',
+    category: GameCategory.focus,
+    color: AppColors.sky,
+    scoreKind: ScoreKind.preciseTimeMs,
+    modes: const [
+      GameMode(id: 's3', label: '3×3', description: '入门'),
+      GameMode(id: 's4', label: '4×4', description: '简单'),
+      GameMode(id: 's5', label: '5×5', description: '标准'),
+      GameMode(id: 's6', label: '6×6', description: '进阶'),
+      GameMode(id: 's7', label: '7×7', description: '困难'),
+      GameMode(id: 'rev', label: '倒序', description: '5×5 · 从 25 点到 1'),
+      GameMode(id: 'shuf', label: '洗牌', description: '5×5 · 每点对一个就重新排列'),
+    ],
+    rules: const [
+      '方格里打乱排着 1 到 N² 的数字，按从小到大的顺序依次点出来。',
+      '顶部「下一个」是该点的数字；点错一次加 1 秒。',
+      '「倒序」从最大的数字点到 1；「洗牌」每点对一个，整张表都会重新排列。',
+      '用时越短越好。练习时眼睛尽量盯住方格中央，用余光找数字。',
+    ],
+    builder: (context, session) => SchulteGameView(session: session),
+    coverBuilder: (context) => const SchulteCover(),
+  ),
+  GameDefinition(
+    id: 'onestroke',
+    title: '一笔画',
+    tagline: '一笔走遍所有格子，不重复不回头',
+    category: GameCategory.puzzle,
+    color: AppColors.lemon,
+    scoreKind: ScoreKind.timeMs,
+    modes: const [
+      GameMode(id: 'o4', label: '4×4', description: '入门'),
+      GameMode(id: 'o5', label: '5×5', description: '简单'),
+      GameMode(id: 'o6', label: '6×6', description: '进阶'),
+      GameMode(id: 'o7', label: '7×7', description: '困难'),
+      GameMode(id: 'o8', label: '8×8', description: '专家'),
+      GameMode(id: 'o9', label: '9×9', description: '大师'),
+    ],
+    rules: const [
+      '从带圆点的起点出发，手指拖动，一笔走遍所有白色格子。',
+      '只能上下左右走，每个格子只能经过一次；深色格子是障碍。',
+      '往回拖可以退回；点路径上的任意一格，可以从那里重新画。',
+      '卡住时可以用「提示」：每局 3 次，点选一个格子，显示路线在这格从哪边来、往哪边去。'
+          '答案可能不止一种，提示会按同一种固定的走法给出。',
+      '每道题都一定有解，用时越短越好；使用过提示的对局不计入最佳纪录。',
+    ],
+    builder: (context, session) => OneStrokeGameView(session: session),
+    coverBuilder: (context) => const OneStrokeCover(),
+  ),
+  GameDefinition(
+    id: 'twentyfour',
+    title: '24点',
+    tagline: '四个数字加减乘除，算出 24',
+    category: GameCategory.math,
+    color: AppColors.coral,
+    scoreKind: ScoreKind.timeMs,
+    modes: const [
+      GameMode(id: 't1', label: '入门', description: '数字 1–9 · 3 题'),
+      GameMode(id: 't2', label: '简单', description: '数字 1–10 · 5 题'),
+      GameMode(id: 't3', label: '进阶', description: '数字 1–13 · 5 题'),
+      GameMode(id: 't4', label: '困难', description: '数字 1–13 · 5 题 · 解法更少'),
+      GameMode(id: 't5', label: '大师', description: '数字 1–13 · 3 题 · 必须用到分数'),
+    ],
+    rules: const [
+      '每题有 4 个数字，用加、减、乘、除把它们算成 24，每个数字都要用且只能用一次。',
+      '点一个数字、点运算符、再点另一个数字，两张牌会合成计算结果；中间结果可以是分数。',
+      '算错了可以撤销或重置；实在想不出可以看答案，但这局不计入最佳纪录。',
+      '一局有好几题，全部算出的总用时越短越好。',
+    ],
+    builder: (context, session) => TwentyFourGameView(session: session),
+    coverBuilder: (context) => const TwentyFourCover(),
   ),
 ];

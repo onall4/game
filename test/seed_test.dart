@@ -8,7 +8,13 @@ import 'package:game/games/codebreaker/codebreaker_page.dart';
 import 'package:game/games/game_registry.dart';
 import 'package:game/games/memory/memory_logic.dart';
 import 'package:game/games/memory/memory_page.dart';
+import 'package:game/games/onestroke/onestroke_logic.dart';
+import 'package:game/games/onestroke/onestroke_page.dart';
+import 'package:game/games/schulte/schulte_logic.dart';
+import 'package:game/games/schulte/schulte_page.dart';
 import 'package:game/games/seed.dart';
+import 'package:game/games/twentyfour/twentyfour_logic.dart';
+import 'package:game/games/twentyfour/twentyfour_page.dart';
 
 /// 每个游戏某难度下开局的“指纹”：开局完全相同时指纹相同。
 String _fingerprint(String gameId, String modeId, GameSeed seed) {
@@ -30,6 +36,30 @@ String _fingerprint(String gameId, String modeId, GameSeed seed) {
       final (rows, cols) = MemoryGameView.gridFor(modeId);
       final game = MemoryGame(pairs: rows * cols ~/ 2, random: random);
       return [for (final c in game.cards) c.symbol.toRadixString(36)].join();
+    case 'schulte':
+      final config = SchulteGameView.configFor(modeId);
+      final game = SchulteGame(config, random: random);
+      final start = game.cells.join(',');
+      if (!config.reshuffle) return start;
+      // 洗牌模式：点对两个之后的排列也由种子决定
+      for (var k = 0; k < 2; k++) {
+        game.tap(game.cells.indexOf(game.next));
+      }
+      return '$start/${game.cells.join(',')}';
+    case 'onestroke':
+      final c = OneStrokeGameView.configFor(modeId);
+      final p = OneStrokePuzzle.generate(
+        cols: c.cols,
+        rows: c.rows,
+        minWalls: c.minWalls,
+        maxWalls: c.maxWalls,
+        random: random,
+      );
+      return '${(p.toJson()['walls'] as List).join(',')}/${p.start}';
+    case 'twentyfour':
+      final level = TwentyFourGameView.levelFor(modeId);
+      final game = TwentyFourGame(level, random: random);
+      return [for (final p in game.puzzles) p.join(',')].join(' ');
   }
   throw ArgumentError(gameId);
 }
@@ -206,6 +236,29 @@ void main() {
         'memory': {
           'easy': 'b73b8e793e89',
           'm36': '84dcaf1fe7840gb3ae66955h9bd07h3g21c2',
+        },
+        'schulte': {
+          's3': '8,5,4,9,3,2,7,1,6',
+          's5': '17,3,11,5,16,1,20,6,25,23,14,13,2,9,21,7,12,15,18,8,10,24,22,19,4',
+          'rev': '14,3,22,8,16,2,25,15,21,20,10,6,4,11,13,1,17,12,23,9,19,18,5,7,24',
+          'shuf':
+              '4,14,25,7,20,8,13,24,16,23,18,10,21,6,22,19,17,1,9,12,5,3,2,15,11/'
+              '24,14,12,10,3,6,17,22,4,8,23,7,11,15,25,16,2,20,5,21,1,19,13,18,9',
+        },
+        'onestroke': {
+          'o4': '1,7/3',
+          'o5': '18,21/20',
+          'o6': '7,30,31/6',
+          'o7': '5,10,18,37,39,40/6',
+          'o8': '3,29,35,50,53/54',
+          'o9': '24,30,43,57,58,70,79/80',
+        },
+        'twentyfour': {
+          't1': '8,2,2,8 9,8,3,9 8,4,4,8',
+          't2': '7,4,2,1 5,8,8,9 3,5,9,8 3,1,2,8 3,7,7,2',
+          't3': '3,11,6,9 9,6,5,1 5,6,7,9 1,9,8,11 6,6,8,10',
+          't4': '8,12,6,7 10,6,7,3 13,3,4,9 8,13,8,12 3,9,11,3',
+          't5': '10,4,10,2 7,7,3,3 2,10,7,7',
         },
       };
       for (final MapEntry(key: gameId, value: modes) in expected.entries) {

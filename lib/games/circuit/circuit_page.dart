@@ -197,7 +197,7 @@ class _CircuitGameState extends State<CircuitGame> {
           const SizedBox(height: 12),
           Row(
             children: [
-              _HintButton(
+              HintButton(
                 left: _puzzle.hintsLeft,
                 picking: _picking,
                 enabled: !_puzzle.solved && (_picking || _puzzle.hintsLeft > 0),
@@ -356,48 +356,6 @@ class _Tile extends StatelessWidget {
 }
 
 /// 底部的提示按钮：显示剩余次数；提示模式下变成“取消”。
-class _HintButton extends StatelessWidget {
-  const _HintButton({
-    required this.left,
-    required this.picking,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final int left;
-  final bool picking;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Pressable(
-      onTap: onTap,
-      enabled: enabled,
-      color: picking ? AppColors.lemon : AppColors.paper,
-      radius: 14,
-      shadow: 3,
-      semanticLabel: picking ? '取消提示' : '提示，剩余 $left 次',
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            picking ? Icons.close_rounded : Icons.lightbulb_outline_rounded,
-            size: 18,
-            color: AppColors.ink,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            picking ? '取消' : '提示 $left',
-            style: AppText.subtitle.copyWith(fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _WirePainter extends CustomPainter {
   _WirePainter({
     required this.mask,

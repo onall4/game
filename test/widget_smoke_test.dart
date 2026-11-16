@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:game/app.dart';
 import 'package:game/core/app_services.dart';
@@ -26,10 +27,21 @@ void main() {
     return services;
   }
 
+  /// 首页游戏变多后，靠下的卡片要先滚动到可见再点。
+  Future<void> showOnHome(WidgetTester tester, String title) async {
+    await tester.scrollUntilVisible(
+      find.text(title),
+      200,
+      scrollable: find.byType(Scrollable).first, // 首页主列表（另有横向分类列表）
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('首页展示全部游戏', (tester) async {
     await pumpApp(tester);
     expect(find.text('今天玩点什么？'), findsOneWidget);
     for (final g in gameRegistry) {
+      await showOnHome(tester, g.title);
       expect(find.text(g.title), findsOneWidget);
     }
   });
@@ -37,6 +49,7 @@ void main() {
   for (final game in gameRegistry) {
     testWidgets('能进入并切换「${game.title}」的所有难度', (tester) async {
       await pumpApp(tester);
+      await showOnHome(tester, game.title);
       await tester.tap(find.text(game.title));
       await tester.pumpAndSettle();
       expect(find.text(game.modes.first.description), findsOneWidget);
@@ -58,7 +71,7 @@ void main() {
 
       await tester.tap(find.byTooltip('返回'));
       await tester.pumpAndSettle();
-      expect(find.text('今天玩点什么？'), findsOneWidget);
+      expect(find.byTooltip('重新开始'), findsNothing, reason: '已回到首页');
       // 首页卡片跟随上次选择的难度
       expect(find.text('${game.modes.last.label} · 还没有纪录'), findsOneWidget);
     });
@@ -79,6 +92,11 @@ void main() {
         await tester.tap(find.text(m.label));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
+        // 左上角的难度说明放得下（必要时换行），不会被截成“…”
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(m.description),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse, reason: m.description);
       }
     });
   }
@@ -96,15 +114,22 @@ void main() {
         scrollable: find.byType(Scrollable).first, // 设置页主列表
       );
       await tester.pumpAndSettle();
-      final last = find.text(game.modes.last.label);
+      final last = find.descendant(
+        of: find.byKey(ValueKey('stats-${game.id}')),
+        matching: find.text(game.modes.last.label),
+      );
+      final row = find.ancestor(of: last, matching: find.byType(Scrollable));
       expect(
-        tester.getRect(last).left,
-        greaterThan(width),
-        reason: '难度多时最后一个应在右侧屏幕外，需要滑动查看',
+        tester.getRect(last).right,
+        greaterThan(tester.getRect(row.first).right),
+        reason: '${game.title}：难度多时最后一个被遮住，需要滑动查看',
       );
       await tester.ensureVisible(last);
       await tester.pumpAndSettle();
-      expect(tester.getRect(last).right, lessThanOrEqualTo(width));
+      expect(
+        tester.getRect(last).right,
+        lessThanOrEqualTo(tester.getRect(row.first).right + 0.5),
+      );
       expect(tester.takeException(), isNull);
     }
   });
@@ -149,7 +174,7 @@ void main() {
     await tester.tap(find.text('回路'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('回路')); // 点标题打开种子面板
+    await tester.tap(find.textContaining(RegExp(r'^#'))); // 点左上角的种子
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '1K7Q2XM');
     await tester.tap(find.text('用这个种子开始'));
