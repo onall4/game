@@ -15,9 +15,11 @@ final List<GameDefinition> gameRegistry = [
     color: AppColors.mint,
     scoreKind: ScoreKind.timeMs,
     modes: const [
-      GameMode(id: 'easy', label: '5×5', description: '入门 · 5×5 电路板'),
+      // 模式 ID 会作为存储键：6×6 沿用旧 ID 'normal' 以保留历史纪录
+      GameMode(id: 'size4', label: '4×4', description: '入门 · 4×4 电路板'),
       GameMode(id: 'normal', label: '6×6', description: '进阶 · 6×6 电路板'),
-      GameMode(id: 'hard', label: '7×7', description: '烧脑 · 7×7 电路板'),
+      GameMode(id: 'size8', label: '8×8', description: '烧脑 · 8×8 电路板'),
+      GameMode(id: 'size10', label: '10×10', description: '大师 · 10×10 电路板'),
     ],
     rules: const [
       '中央的闪电是电源，每个格子里都是一段导线。',
@@ -39,7 +41,7 @@ final List<GameDefinition> gameRegistry = [
     modes: const [
       GameMode(id: 'easy', label: '简单', description: '3 位 · 数字 1–6 · 不重复'),
       GameMode(id: 'normal', label: '普通', description: '4 位 · 数字 0–9 · 不重复'),
-      GameMode(id: 'hard', label: '困难', description: '4 位 · 数字 0–9 · 可重复'),
+      GameMode(id: 'hard6', label: '困难', description: '6 位 · 数字 0–9 · 可重复'),
     ],
     rules: const [
       '保险箱有一个隐藏的数字密码，猜中它就能开锁，不限次数。',

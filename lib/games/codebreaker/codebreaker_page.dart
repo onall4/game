@@ -38,7 +38,8 @@ class CodeBreakerGameView extends StatefulWidget {
       firstSymbol: 1,
       allowRepeat: false,
     ),
-    'hard' => const CodeConfig(length: 4, symbols: 10, allowRepeat: true),
+    // 困难：6 位、可重复（用新 ID，避免和旧版 4 位困难的纪录混在一起）
+    'hard6' => const CodeConfig(length: 6, symbols: 10, allowRepeat: true),
     _ => const CodeConfig(length: 4, symbols: 10, allowRepeat: false),
   };
 
@@ -58,9 +59,6 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     duration: const Duration(milliseconds: 380),
   );
 
-  /// 是否值得保存进度：动过手，或者本来就是继续的上一局。
-  bool _touched = false;
-
   CodeConfig get _config => _game.config;
 
   @override
@@ -75,17 +73,17 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
           config,
           (saved['game'] as Map).cast<String, dynamic>(),
         );
-        if (!g.won) {
-          restored = g;
-          final alphabet = config.alphabet.toSet();
-          _excluded.addAll(
-            List<int>.from(saved['excluded'] as List? ?? const [])
-                .where(alphabet.contains),
-          );
-          final input = List<int>.from(saved['input'] as List? ?? const []);
-          if (input.length < config.length && input.every(alphabet.contains)) {
-            _input.addAll(input);
-          }
+        restored = g;
+        final alphabet = config.alphabet.toSet();
+        _excluded.addAll(
+          List<int>.from(saved['excluded'] as List? ?? const [])
+              .where(alphabet.contains),
+        );
+        final input = List<int>.from(saved['input'] as List? ?? const []);
+        if (!g.won &&
+            input.length < config.length &&
+            input.every(alphabet.contains)) {
+          _input.addAll(input);
         }
       } catch (_) {
         // 存档损坏或格式变化：直接开新局
@@ -94,10 +92,11 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
       }
     }
     _game = restored ?? CodeBreakerGame(config);
-    _touched = restored != null;
     _clock = GameClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
     );
+    // 用时从进入游戏开始算；已完成的对局停在最终用时
+    if (!_game.won) _clock.start();
     if (restored != null && restored.history.isNotEmpty) {
       // 继续上一局时，直接滚到最新一次试开
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -109,7 +108,6 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
   }
 
   void _save() {
-    _touched = true;
     widget.session.saveProgress({
       'elapsedMs': _clock.elapsedMs,
       'game': _game.toJson(),
@@ -120,7 +118,7 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
 
   @override
   void dispose() {
-    if (_touched && !_game.won) _save();
+    _save();
     _clock.dispose();
     _scroll.dispose();
     _shake.dispose();
@@ -130,7 +128,6 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
   void _press(int digit) {
     if (_game.won || _input.length >= _config.length) return;
     if (!_config.allowRepeat && _input.contains(digit)) return;
-    _clock.start();
     AppScope.of(context).haptics.tap();
     setState(() => _input.add(digit));
     _save();
@@ -174,8 +171,9 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
       }
     });
 
+    if (_game.won) _clock.stop();
+    _save();
     if (_game.won) {
-      _clock.stop();
       widget.session.onFinish(
         GameFinish(
           won: true,
@@ -184,8 +182,6 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
           details: [('用时', formatDuration(_clock.elapsedMs))],
         ),
       );
-    } else {
-      _save();
     }
   }
 
@@ -205,16 +201,7 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
                 ),
               ),
               const SizedBox(width: 10),
-              Expanded(
-                child: ListenableBuilder(
-                  listenable: _clock,
-                  builder: (_, _) => StatPill(
-                    icon: Icons.timer_outlined,
-                    label: '用时',
-                    value: formatDuration(_clock.elapsedMs),
-                  ),
-                ),
-              ),
+              Expanded(child: GameClockPill(clock: _clock)),
               const SizedBox(width: 12),
               const _Legend(),
             ],
@@ -351,6 +338,8 @@ class _HistoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 6 位密码时收紧间距，让数字块尽量保持大一些
+    final compact = row.digits.length > 4;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 260),
@@ -365,11 +354,14 @@ class _HistoryRow extends StatelessWidget {
       child: ChunkyBox(
         radius: 14,
         shadow: 2.5,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 8 : 10,
+          vertical: 8,
+        ),
         child: Row(
           children: [
             SizedBox(
-              width: 28,
+              width: compact ? 22 : 28,
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
@@ -386,7 +378,7 @@ class _HistoryRow extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       for (final (i, d) in row.digits.indexed) ...[
-                        if (i > 0) const SizedBox(width: 6),
+                        if (i > 0) SizedBox(width: compact ? 4 : 6),
                         _DigitToken(digit: d, size: 34),
                       ],
                     ],
@@ -542,39 +534,54 @@ class _InputRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final values = revealed ?? input;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var i = 0; i < length; i++) ...[
-          if (i > 0) const SizedBox(width: 10),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            width: 56,
-            height: 60,
-            alignment: Alignment.center,
-            decoration: chunkyDecoration(
-              color: i < values.length
-                  ? digitColor(values[i])
-                  : AppColors.paper,
-              radius: 14,
-              shadow: i < values.length ? 3.5 : 0,
-              borderColor: revealed == null && i == input.length
-                  ? AppColors.ink
-                  : AppColors.ink.withValues(
-                      alpha: i < values.length ? 1 : 0.35,
-                    ),
-            ),
-            child: i < values.length
-                ? Text(
-                    '${values[i]}',
-                    style: AppText.number.copyWith(fontSize: 28),
-                  )
-                : (revealed == null && i == input.length
-                      ? Container(width: 18, height: 3, color: AppColors.ink)
-                      : null),
-          ),
-        ],
-      ],
+    // 6 位密码时一行放不下 56 宽的格子：按可用宽度等比缩小
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gap = length > 4 ? 8.0 : 10.0;
+        final w = min(
+          56.0,
+          (constraints.maxWidth - gap * (length - 1)) / length,
+        );
+        final k = w / 56;
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            for (var i = 0; i < length; i++) ...[
+              if (i > 0) SizedBox(width: gap),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: w,
+                height: 60 * k,
+                alignment: Alignment.center,
+                decoration: chunkyDecoration(
+                  color: i < values.length
+                      ? digitColor(values[i])
+                      : AppColors.paper,
+                  radius: 14 * k,
+                  shadow: i < values.length ? 3.5 : 0,
+                  borderColor: revealed == null && i == input.length
+                      ? AppColors.ink
+                      : AppColors.ink.withValues(
+                          alpha: i < values.length ? 1 : 0.35,
+                        ),
+                ),
+                child: i < values.length
+                    ? Text(
+                        '${values[i]}',
+                        style: AppText.number.copyWith(fontSize: 28 * k),
+                      )
+                    : (revealed == null && i == input.length
+                          ? Container(
+                              width: 18 * k,
+                              height: 3,
+                              color: AppColors.ink,
+                            )
+                          : null),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

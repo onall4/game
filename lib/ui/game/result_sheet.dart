@@ -5,25 +5,22 @@ import '../../games/game_definition.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chunky.dart';
 
-enum ResultAction { again, home }
-
-Future<ResultAction> showResultSheet(
+/// 弹出结算页。弹窗只展示成绩、不含按钮：下滑或点空白处即可收起，
+/// 方便玩家回看自己的棋盘 / 解法；之后可通过游戏页右上角的奖杯再次打开。
+Future<void> showResultSheet(
   BuildContext context, {
   required GameDefinition game,
   required GameMode mode,
   required GameFinish finish,
   required RecordOutcome outcome,
-}) async {
-  final action = await showModalBottomSheet<ResultAction>(
+}) {
+  return showModalBottomSheet<void>(
     context: context,
-    isDismissible: false,
-    enableDrag: false,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) =>
         _ResultSheet(game: game, mode: mode, finish: finish, outcome: outcome),
   );
-  return action ?? ResultAction.again;
 }
 
 class _ResultSheet extends StatelessWidget {
@@ -56,10 +53,20 @@ class _ResultSheet extends StatelessWidget {
               Transform.scale(scale: scale, child: child),
           child: ChunkyBox(
             color: AppColors.cream,
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 16),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // 拖动条：提示这个弹窗可以下滑收起
+                Container(
+                  width: 40,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: AppColors.inkFaint,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Container(
                   width: 72,
                   height: 72,
@@ -104,30 +111,15 @@ class _ResultSheet extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ChunkyButton(
-                        label: '返回',
-                        color: AppColors.paper,
-                        expand: true,
-                        onTap: () =>
-                            Navigator.of(context).pop(ResultAction.home),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: ChunkyButton(
-                        label: '再来一局',
-                        icon: Icons.replay_rounded,
-                        color: game.color,
-                        expand: true,
-                        onTap: () =>
-                            Navigator.of(context).pop(ResultAction.again),
-                      ),
-                    ),
+                const SizedBox(height: 14),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 14,
+                  runSpacing: 4,
+                  children: const [
+                    _Hint(icon: Icons.swipe_down_alt_rounded, text: '下滑收起'),
+                    _Hint(icon: Icons.emoji_events_outlined, text: '奖杯：再看成绩'),
+                    _Hint(icon: Icons.refresh_rounded, text: '刷新：新的一局'),
                   ],
                 ),
               ],
@@ -148,4 +140,23 @@ class _ResultSheet extends StatelessWidget {
       ],
     ),
   );
+}
+
+class _Hint extends StatelessWidget {
+  const _Hint({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: AppColors.inkSoft),
+        const SizedBox(width: 3),
+        Text(text, style: AppText.caption),
+      ],
+    );
+  }
 }

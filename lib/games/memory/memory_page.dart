@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:ui' show PointMode;
 
 import 'package:flutter/material.dart';
 
@@ -53,9 +54,6 @@ class _MemoryGameViewState extends State<MemoryGameView> {
   late final MemoryGame _game;
   late final GameClock _clock;
 
-  /// 是否值得保存进度：动过手，或者本来就是继续的上一局。
-  bool _touched = false;
-
   @override
   void initState() {
     super.initState();
@@ -68,20 +66,20 @@ class _MemoryGameViewState extends State<MemoryGameView> {
         final g = MemoryGame.fromJson(
           (saved['game'] as Map).cast<String, dynamic>(),
         );
-        if (g.pairs == pairs && !g.completed) restored = g;
+        if (g.pairs == pairs) restored = g;
       } catch (_) {
         // 存档损坏或格式变化：直接开新局
       }
     }
     _game = restored ?? MemoryGame(pairs: pairs);
-    _touched = restored != null;
     _clock = GameClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
     );
+    // 用时从进入游戏开始算；已完成的对局停在最终用时
+    if (!_game.completed) _clock.start();
   }
 
   void _save() {
-    _touched = true;
     widget.session.saveProgress({
       'elapsedMs': _clock.elapsedMs,
       'game': _game.toJson(),
@@ -90,7 +88,7 @@ class _MemoryGameViewState extends State<MemoryGameView> {
 
   @override
   void dispose() {
-    if (_touched && !_game.completed) _save();
+    _save();
     _clock.dispose();
     super.dispose();
   }
@@ -99,7 +97,6 @@ class _MemoryGameViewState extends State<MemoryGameView> {
     final haptics = AppScope.of(context).haptics;
     final outcome = _game.flip(i);
     if (outcome == FlipOutcome.ignored) return;
-    _clock.start();
     setState(() {});
 
     switch (outcome) {
@@ -107,7 +104,6 @@ class _MemoryGameViewState extends State<MemoryGameView> {
         haptics.tap();
       case FlipOutcome.match:
         haptics.light();
-        if (_game.completed) _finish();
       case FlipOutcome.mismatch:
         haptics.tap();
         Future<void>.delayed(const Duration(milliseconds: 750), () {
@@ -117,11 +113,12 @@ class _MemoryGameViewState extends State<MemoryGameView> {
       case FlipOutcome.ignored:
         break;
     }
-    if (!_game.completed) _save();
+    if (_game.completed) _clock.stop();
+    _save();
+    if (_game.completed) _finish();
   }
 
   void _finish() {
-    _clock.stop();
     widget.session.onFinish(
       GameFinish(
         won: true,
@@ -150,14 +147,7 @@ class _MemoryGameViewState extends State<MemoryGameView> {
                 label: '步数',
                 value: '${_game.moves}',
               ),
-              ListenableBuilder(
-                listenable: _clock,
-                builder: (_, _) => StatPill(
-                  icon: Icons.timer_outlined,
-                  label: '用时',
-                  value: formatDuration(_clock.elapsedMs),
-                ),
-              ),
+              GameClockPill(clock: _clock),
               StatPill(
                 icon: Icons.style_outlined,
                 label: '配对',
@@ -299,13 +289,17 @@ class _Back extends StatelessWidget {
 class _BackPatternPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = const Color(0xFF3A3352);
+    // 一次 drawPoints 画完所有圆点，比逐个 drawCircle 少几十次绘制调用
+    final paint = Paint()
+      ..color = const Color(0xFF3A3352)
+      ..strokeWidth = 3.2
+      ..strokeCap = StrokeCap.round;
     const step = 10.0;
-    for (var y = step / 2; y < size.height; y += step) {
-      for (var x = step / 2; x < size.width; x += step) {
-        canvas.drawCircle(Offset(x, y), 1.6, paint);
-      }
-    }
+    final points = <Offset>[
+      for (var y = step / 2; y < size.height; y += step)
+        for (var x = step / 2; x < size.width; x += step) Offset(x, y),
+    ];
+    canvas.drawPoints(PointMode.points, points, paint);
   }
 
   @override

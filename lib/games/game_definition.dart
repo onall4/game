@@ -37,6 +37,17 @@ class GameFinish {
     this.message,
   });
 
+  factory GameFinish.fromJson(Map<String, dynamic> json) => GameFinish(
+    won: json['won'] as bool,
+    score: json['score'] as int,
+    durationMs: json['durationMs'] as int,
+    details: [
+      for (final d in json['details'] as List? ?? const [])
+        ((d as List)[0] as String, d[1] as String),
+    ],
+    message: json['message'] as String?,
+  );
+
   final bool won;
   final int score;
   final int durationMs;
@@ -46,6 +57,16 @@ class GameFinish {
 
   /// 结算页副标题，如失败时揭晓答案。
   final String? message;
+
+  Map<String, dynamic> toJson() => {
+    'won': won,
+    'score': score,
+    'durationMs': durationMs,
+    'details': [
+      for (final (label, value) in details) [label, value],
+    ],
+    if (message != null) 'message': message,
+  };
 }
 
 /// 外壳传给具体游戏的上下文。
@@ -60,12 +81,13 @@ class GameSession {
   final GameMode mode;
   final void Function(GameFinish finish) onFinish;
 
-  /// 上次未完成的进度（由 [saveProgress] 保存）；为 null 时开始新游戏。
-  /// 内容格式由各游戏自行定义，解析失败时应直接开始新游戏。
+  /// 上次的对局状态（由 [saveProgress] 保存，可能是已完成的对局）；
+  /// 为 null 时开始新游戏。内容格式由各游戏自行定义，解析失败时应直接开始新游戏。
+  /// 恢复出已完成的对局时，游戏应保持完成画面且不要再调用 [onFinish]。
   final Map<String, dynamic>? savedState;
 
-  /// 保存当前进度。游戏应在每步操作后、以及离开页面（dispose）时调用；
-  /// 对局完成后不要再调用（外壳会自动清除进度）。
+  /// 保存当前对局状态。游戏应在每步操作后（包括完成的那一步，且要在
+  /// [onFinish] 之前）以及离开页面（dispose）时调用。
   final void Function(Map<String, dynamic> state) saveProgress;
 }
 

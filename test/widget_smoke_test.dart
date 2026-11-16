@@ -107,7 +107,7 @@ void main() {
     expect(find.textContaining(RegExp(r'\dA\dB')), findsNothing);
   });
 
-  testWidgets('返回后再进入继续上一局；重新开始会清掉进度', (tester) async {
+  testWidgets('返回后再进入继续上一局；重新开始换成新的一局', (tester) async {
     final services = await pumpApp(tester);
     Finder rotations() => find.descendant(
       of: find.widgetWithText(StatPill, '旋转'),
@@ -119,15 +119,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(rotationValue(), '0');
 
-    // 转动棋盘中央的格子（电源）
-    await tester.tap(find.byType(GridView));
+    // 转动左上角的格子（偶数边长时棋盘正中是格缝，点不到格子）
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(GridView),
+            matching: find.byType(GestureDetector),
+          )
+          .first,
+    );
     await tester.pumpAndSettle();
     expect(rotationValue(), '1');
 
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
     expect(find.textContaining('继续上一局'), findsOneWidget);
-    expect(services.progress.has('circuit', 'easy'), isTrue);
+    expect(services.progress.hasUnfinished('circuit', 'size4'), isTrue);
 
     await tester.tap(find.text('回路'));
     await tester.pumpAndSettle();
@@ -137,11 +144,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(rotationValue(), '0');
 
+    // 离开时新的一局同样会被保存，再进来是这局新的，而不是旧局
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('继续上一局'), findsNothing);
-    expect(services.progress.has('circuit', 'easy'), isFalse);
-
     await tester.tap(find.text('回路'));
     await tester.pumpAndSettle();
     expect(rotationValue(), '0', reason: '重新开始后不应再恢复旧局');

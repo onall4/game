@@ -120,6 +120,18 @@ void main() {
       expect(restored.history.last.feedback, const CodeFeedback(1, 2));
     });
 
+    test('6 位可重复的困难模式', () {
+      const hard = CodeConfig(length: 6, symbols: 10, allowRepeat: true);
+      for (var seed = 0; seed < 20; seed++) {
+        final g = CodeBreakerGame(hard, random: Random(seed));
+        expect(g.secret.length, 6);
+        expect(g.secret.every((d) => d >= 0 && d <= 9), isTrue);
+      }
+      final g = CodeBreakerGame(hard, secret: [1, 1, 2, 2, 3, 3]);
+      expect(g.validate([1, 1, 1, 1, 1, 1]), isNull, reason: '允许重复数字');
+      expect(g.submit([3, 3, 2, 2, 1, 1]).feedback, const CodeFeedback(2, 4));
+    });
+
     test('存档与模式不匹配时拒绝恢复', () {
       const normal = CodeConfig(length: 4, symbols: 10, allowRepeat: false);
       final g = CodeBreakerGame(normal, secret: [0, 7, 8, 9]);

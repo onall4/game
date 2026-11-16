@@ -239,7 +239,7 @@ class _GameCard extends StatelessWidget {
     final record = services.records.recordOf(game.id, game.scoreKind);
     final mode = game.modeById(services.settings.lastMode(game.id));
     final best = record.mode(mode.id).best;
-    final inProgress = services.progress.has(game.id, mode.id);
+    final inProgress = services.progress.hasUnfinished(game.id, mode.id);
 
     return Pressable(
       onTap: onTap,

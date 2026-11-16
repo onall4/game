@@ -1,9 +1,9 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../../core/app_services.dart';
-import '../../core/data/models/score_kind.dart';
 import '../../ui/theme/app_theme.dart';
 import '../../ui/widgets/chunky.dart';
 import '../game_clock.dart';
@@ -18,9 +18,11 @@ class CircuitGame extends StatefulWidget {
 
   final GameSession session;
 
+  /// 模式 ID → 边长。'normal' 沿用旧 ID，保留 6×6 的历史纪录。
   static int sizeFor(String modeId) => switch (modeId) {
-    'easy' => 5,
-    'hard' => 7,
+    'size4' => 4,
+    'size8' => 8,
+    'size10' => 10,
     _ => 6,
   };
 
@@ -31,9 +33,6 @@ class CircuitGame extends StatefulWidget {
 class _CircuitGameState extends State<CircuitGame> {
   late final CircuitPuzzle _puzzle;
   late final GameClock _clock;
-
-  /// 是否值得保存进度：动过手，或者本来就是继续的上一局。
-  bool _touched = false;
 
   @override
   void initState() {
@@ -46,20 +45,20 @@ class _CircuitGameState extends State<CircuitGame> {
         final p = CircuitPuzzle.fromJson(
           (saved['puzzle'] as Map).cast<String, dynamic>(),
         );
-        if (p.size == size && !p.solved) restored = p;
+        if (p.size == size) restored = p;
       } catch (_) {
         // 存档损坏或格式变化：直接开新局
       }
     }
     _puzzle = restored ?? CircuitPuzzle.generate(size);
-    _touched = restored != null;
     _clock = GameClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
     );
+    // 用时从进入游戏开始算；已完成的对局停在最终用时
+    if (!_puzzle.solved) _clock.start();
   }
 
   void _save() {
-    _touched = true;
     widget.session.saveProgress({
       'elapsedMs': _clock.elapsedMs,
       'puzzle': _puzzle.toJson(),
@@ -68,7 +67,7 @@ class _CircuitGameState extends State<CircuitGame> {
 
   @override
   void dispose() {
-    if (_touched && !_puzzle.solved) _save();
+    _save();
     _clock.dispose();
     super.dispose();
   }
@@ -80,12 +79,12 @@ class _CircuitGameState extends State<CircuitGame> {
       haptics.error();
       return;
     }
-    _clock.start();
     final before = _puzzle.poweredCount;
     setState(() => _puzzle.rotate(i));
     _puzzle.poweredCount > before ? haptics.light() : haptics.tap();
+    if (_puzzle.solved) _clock.stop();
+    _save();
     if (_puzzle.solved) {
-      _clock.stop();
       widget.session.onFinish(
         GameFinish(
           won: true,
@@ -94,8 +93,6 @@ class _CircuitGameState extends State<CircuitGame> {
           details: [('旋转次数', '${_puzzle.moves}')],
         ),
       );
-    } else {
-      _save();
     }
   }
 
@@ -114,14 +111,7 @@ class _CircuitGameState extends State<CircuitGame> {
         children: [
           StatBar(
             children: [
-              ListenableBuilder(
-                listenable: _clock,
-                builder: (_, _) => StatPill(
-                  icon: Icons.timer_outlined,
-                  label: '用时',
-                  value: formatDuration(_clock.elapsedMs),
-                ),
-              ),
+              GameClockPill(clock: _clock),
               StatPill(
                 icon: Icons.rotate_right_rounded,
                 label: '旋转',
@@ -144,10 +134,13 @@ class _CircuitGameState extends State<CircuitGame> {
                   return SizedBox(
                     width: side,
                     height: side,
-                    child: _Board(
-                      puzzle: _puzzle,
-                      onTap: _onTap,
-                      onLongPress: _onLongPress,
+                    // 棋盘单独成层：计时器、顶部数据变化时不重绘棋盘
+                    child: RepaintBoundary(
+                      child: _Board(
+                        puzzle: _puzzle,
+                        onTap: _onTap,
+                        onLongPress: _onLongPress,
+                      ),
                     ),
                   );
                 },
@@ -179,16 +172,18 @@ class _Board extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final n = puzzle.size;
+    // 大棋盘（8×8 起）收紧边距和格间距，把空间留给格子本身
+    final gap = n >= 8 ? 2.0 : 3.0;
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: EdgeInsets.all(n >= 8 ? 6 : 8),
       decoration: chunkyDecoration(color: AppColors.board, radius: 22),
       child: GridView.builder(
         physics: const NeverScrollableScrollPhysics(),
         padding: EdgeInsets.zero,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: n,
-          mainAxisSpacing: 3,
-          crossAxisSpacing: 3,
+          mainAxisSpacing: gap,
+          crossAxisSpacing: gap,
         ),
         itemCount: n * n,
         itemBuilder: (context, i) => _Tile(
@@ -318,15 +313,9 @@ class _WirePainter extends CustomPainter {
       if (mask & Dir.left != 0) Offset(-1, c.dy),
     ];
 
+    // 通电光晕：贴预先模糊好的位图（见 _GlowCache），不在每帧实时模糊。
     if (powered) {
-      final glow = Paint()
-        ..color = _powerColor.withValues(alpha: 0.35)
-        ..strokeWidth = width * 1.9
-        ..strokeCap = StrokeCap.round
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-      for (final e in ends) {
-        canvas.drawLine(c, e, glow);
-      }
+      _GlowCache.paint(canvas, c, s, mask, isEndpoint);
     }
 
     final wire = Paint()
@@ -352,15 +341,6 @@ class _WirePainter extends CustomPainter {
       );
     } else if (isEndpoint) {
       final r = s * 0.22;
-      if (powered) {
-        canvas.drawCircle(
-          c,
-          r * 1.6,
-          Paint()
-            ..color = _powerColor.withValues(alpha: 0.4)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-        );
-      }
       canvas.drawCircle(
         c,
         r,
@@ -383,6 +363,82 @@ class _WirePainter extends CustomPainter {
       old.powered != powered ||
       old.isSource != isSource ||
       old.isEndpoint != isEndpoint;
+}
+
+/// 通电光晕的位图缓存。
+///
+/// 光晕需要高斯模糊（MaskFilter.blur），代价很高；而 Impeller 渲染器不会
+/// 自动缓存绘制结果，通电格子一多，进出页面的每一帧都要做上百次模糊，导致卡顿。
+/// 这里每种「形状 × 尺寸」只模糊一次生成位图，之后直接贴图，外观与实时模糊一致。
+abstract final class _GlowCache {
+  /// 模糊会溢出格子边界，位图四周留出的余量（逻辑像素）。
+  static const _pad = 12.0;
+  static const _maxEntries = 96;
+  static final Map<(int, int), ui.Image> _images = {};
+
+  static void paint(
+    Canvas canvas,
+    Offset center,
+    double size,
+    int mask,
+    bool endpoint,
+  ) {
+    final key = (mask | (endpoint ? 16 : 0), (size * 4).round());
+    var image = _images[key];
+    if (image == null) {
+      if (_images.length >= _maxEntries) {
+        for (final img in _images.values) {
+          img.dispose();
+        }
+        _images.clear();
+      }
+      image = _images[key] = _render(size, mask, endpoint);
+    }
+    final full = size + _pad * 2;
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Rect.fromCenter(center: center, width: full, height: full),
+      Paint()..filterQuality = FilterQuality.low,
+    );
+  }
+
+  static ui.Image _render(double size, int mask, bool endpoint) {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final c = Offset(size / 2 + _pad, size / 2 + _pad);
+    final width = size * 0.2;
+    final glow = Paint()
+      ..color = _powerColor.withValues(alpha: 0.35)
+      ..strokeWidth = width * 1.9
+      ..strokeCap = StrokeCap.round
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+    final half = size / 2 + 1;
+    for (final (d, dx, dy) in const [
+      (Dir.up, 0, -1),
+      (Dir.right, 1, 0),
+      (Dir.down, 0, 1),
+      (Dir.left, -1, 0),
+    ]) {
+      if (mask & d != 0) {
+        canvas.drawLine(c, c + Offset(dx * half, dy * half), glow);
+      }
+    }
+    if (endpoint) {
+      canvas.drawCircle(
+        c,
+        size * 0.22 * 1.6,
+        Paint()
+          ..color = _powerColor.withValues(alpha: 0.4)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+    }
+    final picture = recorder.endRecording();
+    final px = (size + _pad * 2).ceil();
+    final image = picture.toImageSync(px, px);
+    picture.dispose();
+    return image;
+  }
 }
 
 /// 首页卡片插图

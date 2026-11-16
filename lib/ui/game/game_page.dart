@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_services.dart';
 import '../../core/data/models/game_result.dart';
 import '../../core/data/repositories/game_record_repository.dart';
+import '../../core/data/repositories/progress_repository.dart';
 import '../../games/game_definition.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chunky.dart';
@@ -18,15 +19,28 @@ class GamePage extends StatefulWidget {
   State<GamePage> createState() => _GamePageState();
 }
 
-/// 一局游戏的“存档开关”：重开或完成后关闭，旧对局在销毁时就不会再写回进度。
+/// 一局游戏的存档句柄。
+///
+/// [active] 为 false 表示这一局已被放弃（重新开始），旧对局销毁时不再写回存档；
+/// [resultJson] 是已完成对局的结算数据，之后每次保存都会一并写入。
 class _RoundHandle {
   bool active = true;
+  Map<String, dynamic>? resultJson;
+}
+
+/// 已完成的一局：保留结算数据，供玩家收起弹窗后、或下次进入时再次查看。
+class _RoundResult {
+  const _RoundResult(this.finish, this.outcome);
+
+  final GameFinish finish;
+  final RecordOutcome outcome;
 }
 
 class _GamePageState extends State<GamePage> {
   late GameMode _mode;
   int _round = 0;
   _RoundHandle _handle = _RoundHandle();
+  _RoundResult? _result;
   bool _initialized = false;
 
   @override
@@ -36,19 +50,50 @@ class _GamePageState extends State<GamePage> {
     _initialized = true;
     final settings = AppScope.of(context).settings;
     _mode = widget.game.modeById(settings.lastMode(widget.game.id));
+    _loadRound();
   }
 
-  /// 放弃当前对局（清除进度）并开始新的一局。
+  /// 为当前模式准备新的一局句柄；若存档里是已完成的对局，同时恢复结算数据。
+  void _loadRound() {
+    final services = AppScope.of(context);
+    _handle = _RoundHandle();
+    _result = null;
+    final saved = services.progress.load(widget.game.id, _mode.id);
+    final raw = saved?[ProgressRepository.resultKey];
+    if (raw is! Map) return;
+    try {
+      final json = raw.cast<String, dynamic>();
+      final finish = GameFinish.fromJson(
+        (json['finish'] as Map).cast<String, dynamic>(),
+      );
+      _handle.resultJson = json;
+      _result = _RoundResult(
+        finish,
+        RecordOutcome(
+          record: services.records.recordOf(
+            widget.game.id,
+            widget.game.scoreKind,
+          ),
+          isNewBest: json['newBest'] as bool? ?? false,
+        ),
+      );
+    } catch (_) {
+      // 结算数据损坏：当作没有，不影响对局本身的恢复
+    }
+  }
+
+  /// 放弃当前对局（清除存档）并开始新的一局。
   void _restart() {
     _handle.active = false;
     AppScope.of(context).progress.clear(widget.game.id, _mode.id);
     setState(() {
       _round++;
       _handle = _RoundHandle();
+      _result = null;
     });
   }
 
-  /// 切换难度：当前难度的进度会被保留，切回来时继续。
+  /// 切换难度：每个难度各有自己的存档，切回来时恢复。
   void _selectMode(GameMode mode) {
     if (mode.id == _mode.id) return;
     final services = AppScope.of(context);
@@ -57,35 +102,41 @@ class _GamePageState extends State<GamePage> {
     setState(() {
       _mode = mode;
       _round++;
-      _handle = _RoundHandle();
+      _loadRound();
     });
   }
 
   GameSession _buildSession() {
     final progress = AppScope.of(context).progress;
     final gameId = widget.game.id;
-    // 固定住本局的模式与开关：切换难度后，旧对局销毁时仍写回它自己的进度
+    // 固定住本局的模式与句柄：切换难度后，旧对局销毁时仍写回它自己的存档
     final modeId = _mode.id;
     final handle = _handle;
     return GameSession(
       mode: _mode,
       savedState: progress.load(gameId, modeId),
       saveProgress: (state) {
-        if (handle.active) progress.save(gameId, modeId, state);
+        if (!handle.active) return;
+        progress.save(gameId, modeId, {
+          ...state,
+          if (handle.resultJson != null)
+            ProgressRepository.resultKey: handle.resultJson,
+        });
       },
-      onFinish: (finish) {
-        handle.active = false;
-        progress.clear(gameId, modeId);
-        _handleFinish(finish);
-      },
+      onFinish: (finish) => _handleFinish(finish, modeId, handle),
     );
   }
 
-  Future<void> _handleFinish(GameFinish finish) async {
+  Future<void> _handleFinish(
+    GameFinish finish,
+    String modeId,
+    _RoundHandle handle,
+  ) async {
     final services = AppScope.of(context);
+    final gameId = widget.game.id;
     final result = GameResult(
-      gameId: widget.game.id,
-      modeId: _mode.id,
+      gameId: gameId,
+      modeId: modeId,
       won: finish.won,
       score: finish.score,
       scoreKind: widget.game.scoreKind,
@@ -96,24 +147,38 @@ class _GamePageState extends State<GamePage> {
     services.sync.sync();
     finish.won ? services.haptics.success() : services.haptics.error();
 
-    if (!mounted) return;
+    // 把结算数据写进这一局的存档：退出再进来仍是完成画面，奖杯可查看成绩
+    if (handle.active) {
+      final resultJson = {
+        'finish': finish.toJson(),
+        'newBest': outcome.isNewBest,
+      };
+      handle.resultJson = resultJson;
+      services.progress.save(gameId, modeId, {
+        ...?services.progress.load(gameId, modeId),
+        ProgressRepository.resultKey: resultJson,
+      });
+    }
+
+    if (!mounted || handle != _handle) return;
+    setState(() => _result = _RoundResult(finish, outcome));
     // 留一点时间让玩家看清最后一步
     await Future<void>.delayed(const Duration(milliseconds: 450));
-    if (!mounted) return;
+    if (!mounted || handle != _handle) return;
+    await _showResult();
+  }
 
-    final action = await showResultSheet(
+  /// 打开结算页；玩家收起后停留在已完成的画面上，可随时点奖杯再打开。
+  Future<void> _showResult() async {
+    final result = _result;
+    if (result == null) return;
+    await showResultSheet(
       context,
       game: widget.game,
       mode: _mode,
-      finish: finish,
-      outcome: outcome,
+      finish: result.finish,
+      outcome: result.outcome,
     );
-    if (!mounted) return;
-    if (action == ResultAction.home) {
-      Navigator.of(context).pop();
-    } else {
-      _restart();
-    }
   }
 
   void _showRules() {
@@ -156,6 +221,17 @@ class _GamePageState extends State<GamePage> {
                       ],
                     ),
                   ),
+                  if (_result != null) ...[
+                    _PopIn(
+                      child: ChunkyIconButton(
+                        icon: Icons.emoji_events_rounded,
+                        tooltip: '查看成绩',
+                        color: AppColors.lemon,
+                        onTap: _showResult,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   ChunkyIconButton(
                     icon: Icons.question_mark_rounded,
                     tooltip: '玩法',
@@ -192,6 +268,24 @@ class _GamePageState extends State<GamePage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 出现时弹一下，吸引注意。
+class _PopIn extends StatelessWidget {
+  const _PopIn({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.elasticOut,
+      builder: (context, t, child) => Transform.scale(scale: t, child: child),
+      child: child,
     );
   }
 }
