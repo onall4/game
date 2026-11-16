@@ -14,6 +14,7 @@ class GameResult {
     required this.score,
     required this.scoreKind,
     required this.durationMs,
+    this.assisted = false,
     DateTime? playedAt,
     String? id,
   }) : playedAt = playedAt ?? DateTime.now(),
@@ -27,6 +28,7 @@ class GameResult {
     score: json['score'] as int,
     scoreKind: ScoreKind.values.byName(json['scoreKind'] as String),
     durationMs: json['durationMs'] as int,
+    assisted: json['assisted'] as bool? ?? false,
     playedAt: DateTime.parse(json['playedAt'] as String),
   );
 
@@ -38,6 +40,9 @@ class GameResult {
   final int score;
   final ScoreKind scoreKind;
   final int durationMs;
+
+  /// 是否借助了提示完成。借助提示的对局计入局数与胜场，但不刷新最佳纪录。
+  final bool assisted;
   final DateTime playedAt;
 
   Map<String, dynamic> toJson() => {
@@ -48,6 +53,7 @@ class GameResult {
     'score': score,
     'scoreKind': scoreKind.name,
     'durationMs': durationMs,
+    if (assisted) 'assisted': true,
     'playedAt': playedAt.toIso8601String(),
   };
 

@@ -39,6 +39,8 @@ void main() {
       expect(find.text(game.modes.first.description), findsOneWidget);
 
       for (final m in game.modes) {
+        await tester.ensureVisible(find.text(m.label));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(m.label));
         await tester.pumpAndSettle();
         expect(find.text(m.description), findsOneWidget);
@@ -67,6 +69,8 @@ void main() {
       await tester.tap(find.text(game.title));
       await tester.pumpAndSettle();
       for (final m in game.modes) {
+        await tester.ensureVisible(find.text(m.label));
+        await tester.pumpAndSettle();
         await tester.tap(find.text(m.label));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
@@ -77,6 +81,8 @@ void main() {
   testWidgets('密码锁：试开记录在窄屏 + 大字体下不溢出，且不限次数', (tester) async {
     await pumpApp(tester, size: const Size(360, 640), textScale: 1.3);
     await tester.tap(find.text('密码锁'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('普通'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('普通'));
     await tester.pumpAndSettle();

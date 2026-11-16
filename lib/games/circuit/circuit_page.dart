@@ -18,10 +18,13 @@ class CircuitGame extends StatefulWidget {
 
   final GameSession session;
 
-  /// 模式 ID → 边长。'normal' 沿用旧 ID，保留 6×6 的历史纪录。
+  /// 模式 ID → 边长。5×5/6×6/7×7 沿用最早的 ID，保留历史纪录。
   static int sizeFor(String modeId) => switch (modeId) {
     'size4' => 4,
+    'easy' => 5,
+    'hard' => 7,
     'size8' => 8,
+    'size9' => 9,
     'size10' => 10,
     _ => 6,
   };
@@ -33,6 +36,9 @@ class CircuitGame extends StatefulWidget {
 class _CircuitGameState extends State<CircuitGame> {
   late final CircuitPuzzle _puzzle;
   late final GameClock _clock;
+
+  /// 正在使用提示：等玩家点选要提示的格子。
+  bool _picking = false;
 
   @override
   void initState() {
@@ -75,32 +81,72 @@ class _CircuitGameState extends State<CircuitGame> {
   void _onTap(int i) {
     if (_puzzle.solved) return;
     final haptics = AppScope.of(context).haptics;
-    if (_puzzle.isLocked(i)) {
+    if (_picking) {
+      _useHint(i);
+      return;
+    }
+    if (_puzzle.isHinted(i)) {
       haptics.error();
       return;
     }
     final before = _puzzle.poweredCount;
     setState(() => _puzzle.rotate(i));
     _puzzle.poweredCount > before ? haptics.light() : haptics.tap();
-    if (_puzzle.solved) _clock.stop();
-    _save();
-    if (_puzzle.solved) {
-      widget.session.onFinish(
-        GameFinish(
-          won: true,
-          score: _clock.elapsedMs,
-          durationMs: _clock.elapsedMs,
-          details: [('旋转次数', '${_puzzle.moves}')],
-        ),
-      );
-    }
+    _afterChange();
   }
 
-  void _onLongPress(int i) {
+  /// 进入 / 退出“选格子提示”模式。
+  void _toggleHintMode() {
     if (_puzzle.solved) return;
-    AppScope.of(context).haptics.light();
-    setState(() => _puzzle.toggleLock(i));
+    final haptics = AppScope.of(context).haptics;
+    if (!_picking && _puzzle.hintsLeft <= 0) {
+      haptics.error();
+      return;
+    }
+    haptics.tap();
+    setState(() => _picking = !_picking);
+  }
+
+  void _useHint(int i) {
+    final haptics = AppScope.of(context).haptics;
+    if (_puzzle.isHinted(i)) {
+      haptics.error();
+      return;
+    }
+    setState(() {
+      _puzzle.applyHint(i);
+      _picking = false;
+    });
+    haptics.success();
+    _afterChange();
+  }
+
+  /// 每次棋盘变化后：保存；若已全部点亮则结算。
+  void _afterChange() {
+    final solved = _puzzle.solved;
+    if (solved) _clock.stop();
     _save();
+    if (!solved) return;
+    final hints = _puzzle.hintsUsed;
+    widget.session.onFinish(
+      GameFinish(
+        won: true,
+        score: _clock.elapsedMs,
+        durationMs: _clock.elapsedMs,
+        assisted: hints > 0,
+        details: [
+          ('旋转次数', '${_puzzle.moves}'),
+          if (hints > 0) ('使用提示', '$hints 次'),
+        ],
+      ),
+    );
+  }
+
+  String get _status {
+    if (_puzzle.solved) return '全部点亮！';
+    if (_picking) return '点一块格子，它会被转到正确方向并锁定';
+    if (_puzzle.hintsLeft <= 0) return '提示已用完 · 点击格子旋转导线';
+    return '点击格子旋转导线';
   }
 
   @override
@@ -138,8 +184,8 @@ class _CircuitGameState extends State<CircuitGame> {
                     child: RepaintBoundary(
                       child: _Board(
                         puzzle: _puzzle,
+                        picking: _picking,
                         onTap: _onTap,
-                        onLongPress: _onLongPress,
                       ),
                     ),
                   );
@@ -148,9 +194,24 @@ class _CircuitGameState extends State<CircuitGame> {
             ),
           ),
           const SizedBox(height: 12),
-          Text(
-            _puzzle.solved ? '全部点亮！' : '点击旋转导线 · 长按锁定格子',
-            style: AppText.caption,
+          Row(
+            children: [
+              _HintButton(
+                left: _puzzle.hintsLeft,
+                picking: _picking,
+                enabled: !_puzzle.solved && (_picking || _puzzle.hintsLeft > 0),
+                onTap: _toggleHintMode,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _status,
+                  style: AppText.caption.copyWith(
+                    color: _picking ? AppColors.ink : AppColors.inkSoft,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -161,13 +222,13 @@ class _CircuitGameState extends State<CircuitGame> {
 class _Board extends StatelessWidget {
   const _Board({
     required this.puzzle,
+    required this.picking,
     required this.onTap,
-    required this.onLongPress,
   });
 
   final CircuitPuzzle puzzle;
+  final bool picking;
   final ValueChanged<int> onTap;
-  final ValueChanged<int> onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -191,12 +252,12 @@ class _Board extends StatelessWidget {
           mask: puzzle.baseMask(i),
           turns: puzzle.turnsAt(i),
           powered: puzzle.isPowered(i),
-          locked: puzzle.isLocked(i),
+          hinted: puzzle.isHinted(i),
+          selectable: picking && !puzzle.isHinted(i),
           isSource: i == puzzle.source,
           isEndpoint: puzzle.isEndpoint(i),
           solved: puzzle.solved,
           onTap: () => onTap(i),
-          onLongPress: () => onLongPress(i),
         ),
       ),
     );
@@ -209,39 +270,46 @@ class _Tile extends StatelessWidget {
     required this.mask,
     required this.turns,
     required this.powered,
-    required this.locked,
+    required this.hinted,
+    required this.selectable,
     required this.isSource,
     required this.isEndpoint,
     required this.solved,
     required this.onTap,
-    required this.onLongPress,
   });
 
   final int mask;
   final int turns;
   final bool powered;
-  final bool locked;
+
+  /// 已通过提示转正并锁定
+  final bool hinted;
+
+  /// 提示模式下可被点选
+  final bool selectable;
   final bool isSource;
   final bool isEndpoint;
   final bool solved;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      onLongPress: onLongPress,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         decoration: BoxDecoration(
-          color: locked
+          color: hinted
               ? const Color(0xFF4A4268)
               : solved
               ? const Color(0xFF3D3560)
               : AppColors.boardCell,
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selectable ? AppColors.lemon : Colors.transparent,
+            width: 1.5,
+          ),
         ),
         child: Stack(
           fit: StackFit.expand,
@@ -269,7 +337,7 @@ class _Tile extends StatelessWidget {
                   ),
                 ),
               ),
-            if (locked)
+            if (hinted)
               const Positioned(
                 right: 3,
                 top: 3,
@@ -281,6 +349,49 @@ class _Tile extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 底部的提示按钮：显示剩余次数；提示模式下变成“取消”。
+class _HintButton extends StatelessWidget {
+  const _HintButton({
+    required this.left,
+    required this.picking,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final int left;
+  final bool picking;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      enabled: enabled,
+      color: picking ? AppColors.lemon : AppColors.paper,
+      radius: 14,
+      shadow: 3,
+      semanticLabel: picking ? '取消提示' : '提示，剩余 $left 次',
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            picking ? Icons.close_rounded : Icons.lightbulb_outline_rounded,
+            size: 18,
+            color: AppColors.ink,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            picking ? '取消' : '提示 $left',
+            style: AppText.subtitle.copyWith(fontSize: 14),
+          ),
+        ],
       ),
     );
   }

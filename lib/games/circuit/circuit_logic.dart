@@ -1,6 +1,8 @@
 import 'dart:collection';
 import 'dart:math';
 
+import 'circuit_solver.dart';
+
 /// 方向位掩码：上=1 右=2 下=4 左=8。
 abstract final class Dir {
   static const up = 1;
@@ -36,17 +38,38 @@ int bitCount(int mask) {
 
 /// “回路”谜题：网格中每格是一段导线，点击旋转，让所有格子都连通电源。
 ///
-/// 生成方式：从中心电源出发做随机生成树（随机 Prim），
-/// 保证一定有解；再把每格随机旋转打乱。
+/// 生成方式：从中心电源出发做随机生成树（随机 Prim），保证一定有解；
+/// 再用求解器确认只有唯一解（否则重新生成），最后把每格随机旋转打乱。
 class CircuitPuzzle {
   CircuitPuzzle._(this.size, this.source, this._tiles, this._turns) {
     _recompute();
   }
 
+  /// 每局可用的提示次数。
+  static const maxHints = 3;
+
   factory CircuitPuzzle.generate(int size, {Random? random}) {
     final rng = random ?? Random();
     final n = size * size;
     final source = (size ~/ 2) * size + size ~/ 2;
+    // 只接受求解器确认“恰好一种解”的题目；理论上极少需要重试
+    var tiles = _randomTree(size, source, rng);
+    for (var attempt = 0; attempt < 500; attempt++) {
+      if (countCircuitSolutions(size, tiles) == 1) break;
+      tiles = _randomTree(size, source, rng);
+    }
+
+    late CircuitPuzzle puzzle;
+    do {
+      final turns = List<int>.generate(n, (_) => rng.nextInt(4));
+      puzzle = CircuitPuzzle._(size, source, List.of(tiles), turns);
+    } while (puzzle.solved);
+    return puzzle;
+  }
+
+  /// 以 [source] 为根的随机生成树；每格的值是它连出去的方向集合。
+  static List<int> _randomTree(int size, int source, Random rng) {
+    final n = size * size;
     final tiles = List<int>.filled(n, 0);
     final inTree = List<bool>.filled(n, false);
     inTree[source] = true;
@@ -78,13 +101,7 @@ class CircuitPuzzle {
       inTree[to] = true;
       addFrontier(to);
     }
-
-    late CircuitPuzzle puzzle;
-    do {
-      final turns = List<int>.generate(n, (_) => rng.nextInt(4));
-      puzzle = CircuitPuzzle._(size, source, List.of(tiles), turns);
-    } while (puzzle.solved);
-    return puzzle;
+    return tiles;
   }
 
   /// 用于测试：直接指定格子与旋转。
@@ -109,8 +126,9 @@ class CircuitPuzzle {
     if (tiles.length != size * size || turns.length != tiles.length) {
       throw const FormatException('回路存档尺寸不匹配');
     }
+    // 旧版的手动锁定（'locked'）已取消，不再恢复
     return CircuitPuzzle._(size, source, tiles, turns)
-      .._locked.addAll(List<int>.from(json['locked'] as List? ?? const []))
+      .._hinted.addAll(List<int>.from(json['hinted'] as List? ?? const []))
       .._moves = json['moves'] as int? ?? 0;
   }
 
@@ -119,19 +137,21 @@ class CircuitPuzzle {
     'source': source,
     'tiles': _tiles,
     'turns': [for (final t in _turns) t % 4],
-    'locked': _locked.toList(),
+    'hinted': _hinted.toList(),
     'moves': _moves,
   };
 
   final int size;
   final int source;
 
-  /// 每格的“原始形状”掩码（解中的朝向）。
+  /// 每格的“原始形状”掩码，即唯一解中的朝向。
   final List<int> _tiles;
 
   /// 每格累计被旋转的次数（不取模，便于界面做连续旋转动画）。
   final List<int> _turns;
-  final Set<int> _locked = {};
+
+  /// 通过提示转正并锁定的格子（不能再旋转）。
+  final Set<int> _hinted = {};
   Set<int> _powered = {};
   int _moves = 0;
 
@@ -144,20 +164,35 @@ class CircuitPuzzle {
   int turnsAt(int i) => _turns[i];
   int maskAt(int i) => rotateMask(_tiles[i], _turns[i]);
   bool isPowered(int i) => _powered.contains(i);
-  bool isLocked(int i) => _locked.contains(i);
+  bool isHinted(int i) => _hinted.contains(i);
   bool isEndpoint(int i) => bitCount(_tiles[i]) == 1 && i != source;
 
-  /// 旋转一格，返回是否真的发生了旋转。
+  int get hintsUsed => _hinted.length;
+  int get hintsLeft => maxHints - _hinted.length;
+
+  /// 旋转一格，返回是否真的发生了旋转。提示锁定的格子不能旋转。
   bool rotate(int i) {
-    if (solved || _locked.contains(i)) return false;
+    if (solved || _hinted.contains(i)) return false;
     _turns[i]++;
     _moves++;
     _recompute();
     return true;
   }
 
-  void toggleLock(int i) {
-    if (!_locked.remove(i)) _locked.add(i);
+  /// 使用一次提示：把第 [i] 格转到正确方向并锁定。
+  ///
+  /// 题目只有唯一解，所以“正确方向”没有歧义。返回顺时针补转的次数
+  /// （0~3，供界面做动画）；没有提示次数、该格已提示过或已通关时返回 null。
+  int? applyHint(int i) {
+    if (solved || hintsLeft <= 0 || _hinted.contains(i)) return null;
+    var k = 0;
+    while (rotateMask(_tiles[i], _turns[i] + k) != _tiles[i]) {
+      k++;
+    }
+    _turns[i] += k;
+    _hinted.add(i);
+    _recompute();
+    return k;
   }
 
   void _recompute() {

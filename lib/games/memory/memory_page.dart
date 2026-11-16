@@ -41,7 +41,10 @@ class MemoryGameView extends StatefulWidget {
   /// (列数, 行数)
   static (int, int) gridFor(String modeId) => switch (modeId) {
     'easy' => (3, 4),
+    'm20' => (4, 5),
+    'm24' => (4, 6),
     'hard' => (5, 6),
+    'm36' => (6, 6),
     _ => (4, 4),
   };
 

@@ -35,6 +35,7 @@ class GameFinish {
     required this.durationMs,
     this.details = const [],
     this.message,
+    this.assisted = false,
   });
 
   factory GameFinish.fromJson(Map<String, dynamic> json) => GameFinish(
@@ -46,6 +47,7 @@ class GameFinish {
         ((d as List)[0] as String, d[1] as String),
     ],
     message: json['message'] as String?,
+    assisted: json['assisted'] as bool? ?? false,
   );
 
   final bool won;
@@ -58,6 +60,9 @@ class GameFinish {
   /// 结算页副标题，如失败时揭晓答案。
   final String? message;
 
+  /// 是否借助提示完成（不刷新最佳纪录）。
+  final bool assisted;
+
   Map<String, dynamic> toJson() => {
     'won': won,
     'score': score,
@@ -66,6 +71,7 @@ class GameFinish {
       for (final (label, value) in details) [label, value],
     ],
     if (message != null) 'message': message,
+    if (assisted) 'assisted': true,
   };
 }
 

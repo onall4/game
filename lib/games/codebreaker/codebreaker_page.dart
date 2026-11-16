@@ -38,6 +38,20 @@ class CodeBreakerGameView extends StatefulWidget {
       firstSymbol: 1,
       allowRepeat: false,
     ),
+    'lv2' => const CodeConfig(
+      length: 4,
+      symbols: 6,
+      firstSymbol: 1,
+      allowRepeat: false,
+    ),
+    'lv3' => const CodeConfig(
+      length: 4,
+      symbols: 8,
+      firstSymbol: 1,
+      allowRepeat: false,
+    ),
+    'lv5' => const CodeConfig(length: 5, symbols: 10, allowRepeat: false),
+    'lv6' => const CodeConfig(length: 6, symbols: 10, allowRepeat: false),
     // 困难：6 位、可重复（用新 ID，避免和旧版 4 位困难的纪录混在一起）
     'hard6' => const CodeConfig(length: 6, symbols: 10, allowRepeat: true),
     _ => const CodeConfig(length: 4, symbols: 10, allowRepeat: false),
@@ -51,7 +65,10 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     with SingleTickerProviderStateMixin {
   late final CodeBreakerGame _game;
   late final GameClock _clock;
-  final List<int> _input = [];
+
+  /// 输入区的每一位（null 表示还没填）与当前要填的位置。
+  late List<int?> _slots;
+  int _cursor = 0;
   final Set<int> _excluded = {};
   final ScrollController _scroll = ScrollController();
   late final AnimationController _shake = AnimationController(
@@ -61,10 +78,19 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
 
   CodeConfig get _config => _game.config;
 
+  bool get _filled => _slots.every((d) => d != null);
+
+  /// 不重复模式下，其他位置已经用掉的数字（当前位置可以被替换）。
+  Set<int> get _usedElsewhere => {
+    for (final (i, d) in _slots.indexed)
+      if (i != _cursor && d != null) d,
+  };
+
   @override
   void initState() {
     super.initState();
     final config = CodeBreakerGameView.configFor(widget.session.mode.id);
+    _slots = List<int?>.filled(config.length, null);
     final saved = widget.session.savedState;
     CodeBreakerGame? restored;
     if (saved != null) {
@@ -79,16 +105,24 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
           List<int>.from(saved['excluded'] as List? ?? const [])
               .where(alphabet.contains),
         );
-        final input = List<int>.from(saved['input'] as List? ?? const []);
+        final input = List<int?>.from(saved['input'] as List? ?? const []);
         if (!g.won &&
-            input.length < config.length &&
-            input.every(alphabet.contains)) {
-          _input.addAll(input);
+            input.length <= config.length &&
+            input.every((d) => d == null || alphabet.contains(d))) {
+          // 旧版存档的 input 是从第一位起连续填写的列表，同样适用
+          for (final (i, d) in input.indexed) {
+            _slots[i] = d;
+          }
+          final cursor = saved['cursor'] as int?;
+          _cursor = cursor != null && cursor >= 0 && cursor < config.length
+              ? cursor
+              : _firstEmpty() ?? 0;
         }
       } catch (_) {
         // 存档损坏或格式变化：直接开新局
         _excluded.clear();
-        _input.clear();
+        _slots = List<int?>.filled(config.length, null);
+        _cursor = 0;
       }
     }
     _game = restored ?? CodeBreakerGame(config);
@@ -111,7 +145,8 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     widget.session.saveProgress({
       'elapsedMs': _clock.elapsedMs,
       'game': _game.toJson(),
-      'input': _input,
+      'input': _slots,
+      'cursor': _cursor,
       'excluded': _excluded.toList(),
     });
   }
@@ -125,11 +160,35 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     super.dispose();
   }
 
+  int? _firstEmpty() {
+    final i = _slots.indexOf(null);
+    return i < 0 ? null : i;
+  }
+
+  /// 在当前位置填入数字，然后跳到下一个空位（找不到就停在原地）。
   void _press(int digit) {
-    if (_game.won || _input.length >= _config.length) return;
-    if (!_config.allowRepeat && _input.contains(digit)) return;
+    if (_game.won) return;
+    if (!_config.allowRepeat && _usedElsewhere.contains(digit)) return;
     AppScope.of(context).haptics.tap();
-    setState(() => _input.add(digit));
+    setState(() {
+      _slots[_cursor] = digit;
+      final n = _slots.length;
+      for (var step = 1; step < n; step++) {
+        final i = (_cursor + step) % n;
+        if (_slots[i] == null) {
+          _cursor = i;
+          break;
+        }
+      }
+    });
+    _save();
+  }
+
+  /// 点选输入区的某一位，之后的数字填到这里。
+  void _selectSlot(int i) {
+    if (_game.won || i == _cursor) return;
+    AppScope.of(context).haptics.tap();
+    setState(() => _cursor = i);
     _save();
   }
 
@@ -142,23 +201,49 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     _save();
   }
 
+  /// 删除：当前位置有数字就清掉它；否则清掉它左边最近的一个数字并移过去。
   void _backspace() {
-    if (_input.isEmpty || _game.won) return;
+    if (_game.won) return;
+    var target = _cursor;
+    if (_slots[target] == null) {
+      target = -1;
+      for (var i = _cursor - 1; i >= 0; i--) {
+        if (_slots[i] != null) {
+          target = i;
+          break;
+        }
+      }
+      if (target < 0) return;
+    }
     AppScope.of(context).haptics.tap();
-    setState(_input.removeLast);
+    setState(() {
+      _slots[target] = null;
+      _cursor = target;
+    });
     _save();
   }
 
   void _submit() {
     if (_game.won) return;
     final haptics = AppScope.of(context).haptics;
-    if (_game.validate(_input) != null) {
+    if (!_filled) {
+      // 还有空位：抖一下，并把光标移到第一个空位
+      haptics.error();
+      _shake.forward(from: 0);
+      setState(() => _cursor = _firstEmpty() ?? _cursor);
+      return;
+    }
+    final guess = [for (final d in _slots) d!];
+    if (_game.validate(guess) != null) {
       haptics.error();
       _shake.forward(from: 0);
       return;
     }
-    final row = _game.submit(List.of(_input));
-    setState(_input.clear);
+    final row = _game.submit(guess);
+    setState(() {
+      _slots = List<int?>.filled(_config.length, null);
+      _cursor = 0;
+    });
     row.feedback.exact > 0 ? haptics.light() : haptics.tap();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -234,21 +319,21 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
               child: child,
             ),
             child: _InputRow(
-              length: _config.length,
-              input: _input,
-              revealed: _game.won ? _game.secret : null,
+              slots: _game.won ? _game.secret : _slots,
+              cursor: _game.won ? null : _cursor,
+              onTapSlot: _selectSlot,
             ),
           ),
           const SizedBox(height: 14),
           _Keypad(
             alphabet: _config.alphabet,
-            disabled: _config.allowRepeat ? const {} : _input.toSet(),
+            disabled: _config.allowRepeat ? const {} : _usedElsewhere,
             excluded: _excluded,
             onDigit: _press,
             onLongDigit: _toggleExclude,
             onBackspace: _backspace,
             onSubmit: _submit,
-            canSubmit: _input.length == _config.length && !_game.won,
+            canSubmit: _filled && !_game.won,
           ),
         ],
       ),
@@ -524,16 +609,22 @@ class _DigitToken extends StatelessWidget {
   }
 }
 
+/// 输入区：每一位都能点选；[cursor] 指示下一个数字会填到哪一位。
+/// 已开锁时 [cursor] 为 null，显示揭晓的密码。
 class _InputRow extends StatelessWidget {
-  const _InputRow({required this.length, required this.input, this.revealed});
+  const _InputRow({
+    required this.slots,
+    required this.cursor,
+    required this.onTapSlot,
+  });
 
-  final int length;
-  final List<int> input;
-  final List<int>? revealed;
+  final List<int?> slots;
+  final int? cursor;
+  final ValueChanged<int> onTapSlot;
 
   @override
   Widget build(BuildContext context) {
-    final values = revealed ?? input;
+    final length = slots.length;
     // 6 位密码时一行放不下 56 宽的格子：按可用宽度等比缩小
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -548,40 +639,54 @@ class _InputRow extends StatelessWidget {
           children: [
             for (var i = 0; i < length; i++) ...[
               if (i > 0) SizedBox(width: gap),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                width: w,
-                height: 60 * k,
-                alignment: Alignment.center,
-                decoration: chunkyDecoration(
-                  color: i < values.length
-                      ? digitColor(values[i])
-                      : AppColors.paper,
-                  radius: 14 * k,
-                  shadow: i < values.length ? 3.5 : 0,
-                  borderColor: revealed == null && i == input.length
-                      ? AppColors.ink
-                      : AppColors.ink.withValues(
-                          alpha: i < values.length ? 1 : 0.35,
-                        ),
+              GestureDetector(
+                key: ValueKey('code-slot-$i'),
+                behavior: HitTestBehavior.opaque,
+                onTap: cursor == null ? null : () => onTapSlot(i),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _slot(i, w, k),
+                    const SizedBox(height: 5),
+                    // 光标：下一个数字会填到这一位
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 22 * k,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: i == cursor ? AppColors.ink : Colors.transparent,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ],
                 ),
-                child: i < values.length
-                    ? Text(
-                        '${values[i]}',
-                        style: AppText.number.copyWith(fontSize: 28 * k),
-                      )
-                    : (revealed == null && i == input.length
-                          ? Container(
-                              width: 18 * k,
-                              height: 3,
-                              color: AppColors.ink,
-                            )
-                          : null),
               ),
             ],
           ],
         );
       },
+    );
+  }
+
+  Widget _slot(int i, double w, double k) {
+    final value = slots[i];
+    final active = i == cursor;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      width: w,
+      height: 60 * k,
+      alignment: Alignment.center,
+      decoration: chunkyDecoration(
+        color: value != null ? digitColor(value) : AppColors.paper,
+        radius: 14 * k,
+        shadow: value != null ? 3.5 : 0,
+        borderColor: active || value != null
+            ? AppColors.ink
+            : AppColors.ink.withValues(alpha: 0.35),
+      ),
+      child: value != null
+          ? Text('$value', style: AppText.number.copyWith(fontSize: 28 * k))
+          : null,
     );
   }
 }
@@ -609,7 +714,9 @@ class _Keypad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final perRow = alphabet.length <= 6 ? alphabet.length : 5;
+    final perRow = alphabet.length <= 6
+        ? alphabet.length
+        : (alphabet.length <= 8 ? 4 : 5);
     final rows = <List<int>>[
       for (var i = 0; i < alphabet.length; i += perRow)
         alphabet.sublist(i, min(i + perRow, alphabet.length)),

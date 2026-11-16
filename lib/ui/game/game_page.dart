@@ -141,6 +141,7 @@ class _GamePageState extends State<GamePage> {
       score: finish.score,
       scoreKind: widget.game.scoreKind,
       durationMs: finish.durationMs,
+      assisted: finish.assisted,
     );
     final RecordOutcome outcome = await services.records.recordResult(result);
     // 接入服务器后，这里会在后台把结果推送上去；离线模式下是空操作。
@@ -290,7 +291,11 @@ class _PopIn extends StatelessWidget {
   }
 }
 
-class _ModeSelector extends StatelessWidget {
+/// 难度选择条。
+///
+/// 难度不多时（≤4）平分一行；更多时可左右滑动，每屏露出约 4 个半，
+/// 提示右边还有更多；当前难度会自动滚动到可见位置。
+class _ModeSelector extends StatefulWidget {
   const _ModeSelector({
     required this.modes,
     required this.selected,
@@ -304,49 +309,109 @@ class _ModeSelector extends StatelessWidget {
   final ValueChanged<GameMode> onSelect;
 
   @override
+  State<_ModeSelector> createState() => _ModeSelectorState();
+}
+
+class _ModeSelectorState extends State<_ModeSelector> {
+  final _keys = <String, GlobalKey>{};
+
+  GlobalKey _keyFor(String id) => _keys.putIfAbsent(id, GlobalKey.new);
+
+  @override
+  void initState() {
+    super.initState();
+    _revealSelected(animate: false);
+  }
+
+  @override
+  void didUpdateWidget(_ModeSelector old) {
+    super.didUpdateWidget(old);
+    if (old.selected.id != widget.selected.id) _revealSelected(animate: true);
+  }
+
+  void _revealSelected({required bool animate}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _keys[widget.selected.id]?.currentContext;
+      if (ctx == null || !mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.5,
+        duration: animate ? const Duration(milliseconds: 250) : Duration.zero,
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final modes = widget.modes;
     return Container(
-      padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
         color: AppColors.creamDeep,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.ink, width: AppDims.border),
       ),
-      child: Row(
-        children: [
-          for (final m in modes)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onSelect(m),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: m.id == selected.id ? color : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: m.id == selected.id
-                          ? AppColors.ink
-                          : Colors.transparent,
-                      width: 2,
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    m.label,
-                    style: AppText.subtitle.copyWith(
-                      fontSize: 14,
-                      color: m.id == selected.id
-                          ? AppColors.ink
-                          : AppColors.inkSoft,
-                    ),
-                  ),
-                ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14 - AppDims.border),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const pad = 4.0, gap = 4.0;
+            final visible = modes.length <= 4 ? modes.length.toDouble() : 4.5;
+            final chipWidth =
+                (constraints.maxWidth - pad * 2 - gap * (visible.ceil() - 1)) /
+                visible;
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: modes.length <= 4
+                  ? const NeverScrollableScrollPhysics()
+                  : const BouncingScrollPhysics(),
+              padding: const EdgeInsets.all(pad),
+              child: Row(
+                children: [
+                  for (final (i, m) in modes.indexed) ...[
+                    if (i > 0) const SizedBox(width: gap),
+                    _chip(m, chipWidth),
+                  ],
+                ],
               ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(GameMode m, double width) {
+    final selected = m.id == widget.selected.id;
+    return GestureDetector(
+      key: _keyFor(m.id),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => widget.onSelect(m),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        width: width,
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: selected ? widget.color : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? AppColors.ink : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            m.label,
+            maxLines: 1,
+            style: AppText.subtitle.copyWith(
+              fontSize: 14,
+              color: selected ? AppColors.ink : AppColors.inkSoft,
             ),
-        ],
+          ),
+        ),
       ),
     );
   }

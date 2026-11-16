@@ -27,7 +27,9 @@ class ModeStats {
   ModeStats apply(GameResult r) => ModeStats(
     plays: plays + 1,
     wins: wins + (r.won ? 1 : 0),
-    best: r.won && r.scoreKind.isBetter(r.score, best) ? r.score : best,
+    best: r.won && !r.assisted && r.scoreKind.isBetter(r.score, best)
+        ? r.score
+        : best,
     totalDurationMs: totalDurationMs + r.durationMs,
   );
 

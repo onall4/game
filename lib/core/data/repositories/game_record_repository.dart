@@ -82,7 +82,9 @@ class LocalGameRecordRepository extends GameRecordRepository {
       record: after,
       previousBest: previousBest,
       isNewBest:
-          result.won && result.scoreKind.isBetter(result.score, previousBest),
+          result.won &&
+          !result.assisted &&
+          result.scoreKind.isBetter(result.score, previousBest),
     );
   }
 

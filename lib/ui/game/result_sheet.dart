@@ -94,6 +94,10 @@ class _ResultSheet extends StatelessWidget {
                   const SizedBox(height: 12),
                   const TagChip(label: '★ 新纪录', color: AppColors.lemon),
                 ],
+                if (finish.assisted) ...[
+                  const SizedBox(height: 10),
+                  Text('本局使用了提示，不计入最佳纪录', style: AppText.caption),
+                ],
                 const SizedBox(height: 18),
                 ChunkyBox(
                   shadow: 0,

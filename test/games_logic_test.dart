@@ -41,8 +41,8 @@ void main() {
       }
     });
 
-    test('旋转与锁定', () {
-      // 2x1：左格向右，右格向左，右格初始被转了一次
+    test('旋转与提示锁定', () {
+      // 2x2：右下格初始被转了一次
       final p = CircuitPuzzle.fromTiles(
         size: 2,
         source: 0,
@@ -50,9 +50,6 @@ void main() {
         turns: [0, 0, 0, 1],
       );
       expect(p.solved, isFalse);
-      p.toggleLock(3);
-      expect(p.rotate(3), isFalse);
-      p.toggleLock(3);
       for (var i = 0; i < 3; i++) {
         p.rotate(3);
       }
@@ -198,16 +195,17 @@ void main() {
   });
 
   group('回路存档', () {
-    test('往返后格子、旋转、锁定与步数一致', () {
+    test('往返后格子、旋转、提示与步数一致', () {
       final p = CircuitPuzzle.generate(5, random: Random(3));
       p.rotate(0);
       p.rotate(0);
-      p.toggleLock(7);
+      p.applyHint(7);
       final r = CircuitPuzzle.fromJson(
         jsonDecode(jsonEncode(p.toJson())) as Map<String, dynamic>,
       );
       expect(r.moves, 2);
-      expect(r.isLocked(7), isTrue);
+      expect(r.isHinted(7), isTrue);
+      expect(r.hintsLeft, CircuitPuzzle.maxHints - 1);
       expect(r.poweredCount, p.poweredCount);
       for (var i = 0; i < p.cellCount; i++) {
         expect(r.maskAt(i), p.maskAt(i));
