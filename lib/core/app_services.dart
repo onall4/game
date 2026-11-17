@@ -60,10 +60,11 @@ class AppServices {
   final SyncService sync;
   final Haptics haptics;
 
-  /// 清空全部游戏记录（保留玩家 ID 与设置）。
+  /// 清空全部游戏记录与对局存档（保留玩家 ID 与设置）。
   Future<void> resetProgress() async {
     await records.clear();
     await outbox.clear();
+    await progress.clearAll();
   }
 }
 

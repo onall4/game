@@ -1,9 +1,11 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../core/data/models/score_kind.dart';
 import '../ui/theme/app_theme.dart';
+import 'game_clock.dart';
 import 'seed.dart';
 
 enum GameCategory {
@@ -88,12 +90,28 @@ class GameSession {
     required this.saveProgress,
     this.savedState,
     this.seed,
+    this.paused,
   });
 
   final GameMode mode;
 
   /// 本局的种子。恢复旧版（还没有种子的）存档时为 null。
   final GameSeed? seed;
+
+  /// 外壳处于转场动画或弹窗打开期间为 true，供计时器自动暂停。
+  final ValueListenable<bool>? paused;
+
+  /// 创建与当前会话绑定的计时器（自动处理转场/弹窗暂停与切后台存档）。
+  GameClock createClock({
+    int initialElapsedMs = 0,
+    int resolutionMs = 1000,
+    VoidCallback? onBackground,
+  }) => GameClock(
+    initialElapsedMs: initialElapsedMs,
+    resolutionMs: resolutionMs,
+    paused: paused,
+    onBackground: onBackground,
+  );
 
   /// 开新局时用来生成开局的随机数：同一种子、同一难度得到同一串数。
   Random createRandom() {

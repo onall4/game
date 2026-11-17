@@ -13,8 +13,10 @@ class ResultOutbox {
 
   /// 离线过久时只保留最近的若干条，防止无限增长。
   final int capacity;
+  List<GameResult>? _cache;
 
-  List<GameResult> peekAll() {
+  List<GameResult> _load() {
+    if (_cache != null) return _cache!;
     final list = _store.getJsonList(StorageKeys.resultOutbox) ?? const [];
     final results = <GameResult>[];
     for (final item in list) {
@@ -24,26 +26,34 @@ class ResultOutbox {
         // 忽略损坏条目
       }
     }
-    return results;
+    return _cache = results;
   }
 
-  int get length => peekAll().length;
+  List<GameResult> peekAll() => List.unmodifiable(_load());
+
+  int get length => _load().length;
 
   Future<void> enqueue(GameResult result) async {
-    final all = [...peekAll(), result];
+    final all = [..._load(), result];
     final trimmed = all.length > capacity
         ? all.sublist(all.length - capacity)
         : all;
+    _cache = trimmed;
     await _save(trimmed);
   }
 
   /// 上传成功后，移除已确认的条目。
   Future<void> remove(Iterable<String> ids) async {
     final set = ids.toSet();
-    await _save(peekAll().where((r) => !set.contains(r.id)).toList());
+    final next = _load().where((r) => !set.contains(r.id)).toList();
+    _cache = next;
+    await _save(next);
   }
 
-  Future<void> clear() => _store.remove(StorageKeys.resultOutbox);
+  Future<void> clear() {
+    _cache = <GameResult>[];
+    return _store.remove(StorageKeys.resultOutbox);
+  }
 
   Future<void> _save(List<GameResult> list) => _store.setJson(
     StorageKeys.resultOutbox,

@@ -21,6 +21,13 @@ abstract final class AppColors {
   static const boardCell = Color(0xFF362F50);
 }
 
+abstract final class AppMeta {
+  static const version = String.fromEnvironment(
+    'FLUTTER_BUILD_NAME',
+    defaultValue: '0.1.0',
+  );
+}
+
 abstract final class AppDims {
   static const border = 2.5;
   static const radius = 18.0;

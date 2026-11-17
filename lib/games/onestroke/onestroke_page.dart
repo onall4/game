@@ -68,8 +68,9 @@ class _OneStrokeGameViewState extends State<OneStrokeGameView> {
           maxWalls: config.maxWalls,
           random: widget.session.createRandom(),
         );
-    _clock = GameClock(
+    _clock = widget.session.createClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
+      onBackground: _save,
     );
     // 用时从进入游戏开始算；已完成的对局停在最终用时
     if (!_puzzle.completed) _clock.start();
@@ -138,7 +139,7 @@ class _OneStrokeGameViewState extends State<OneStrokeGameView> {
       return;
     }
     setState(() {});
-    _afterChange();
+    if (_puzzle.completed) _afterChange();
   }
 
   void _onPanUpdate(DragUpdateDetails d, double cell) {
@@ -236,32 +237,34 @@ class _OneStrokeGameViewState extends State<OneStrokeGameView> {
                     (c.maxWidth - pad * 2) / p.cols,
                     (c.maxHeight - pad * 2) / p.rows,
                   );
-                  return Container(
-                    padding: const EdgeInsets.all(pad - AppDims.border),
-                    decoration: chunkyDecoration(
-                      color: AppColors.creamDeep,
-                      radius: 20,
-                    ),
-                    child: GestureDetector(
-                      key: const ValueKey('onestroke-board'),
-                      behavior: HitTestBehavior.opaque,
-                      dragStartBehavior: DragStartBehavior.down,
-                      onPanStart: (d) => _onPanStart(d, cell),
-                      onPanUpdate: (d) => _onPanUpdate(d, cell),
-                      onPanEnd: (_) => _onPanEnd(),
-                      onPanCancel: _onPanEnd,
-                      onTapUp: (d) => _onTapUp(d, cell),
-                      child: CustomPaint(
-                        size: Size(cell * p.cols, cell * p.rows),
-                        painter: _BoardPainter(
-                          cols: p.cols,
-                          rows: p.rows,
-                          walls: p.walls,
-                          start: p.start,
-                          path: p.path,
-                          completed: p.completed,
-                          hints: p.hints,
-                          picking: _picking,
+                  return RepaintBoundary(
+                    child: Container(
+                      padding: const EdgeInsets.all(pad - AppDims.border),
+                      decoration: chunkyDecoration(
+                        color: AppColors.creamDeep,
+                        radius: 20,
+                      ),
+                      child: GestureDetector(
+                        key: const ValueKey('onestroke-board'),
+                        behavior: HitTestBehavior.opaque,
+                        dragStartBehavior: DragStartBehavior.down,
+                        onPanStart: (d) => _onPanStart(d, cell),
+                        onPanUpdate: (d) => _onPanUpdate(d, cell),
+                        onPanEnd: (_) => _onPanEnd(),
+                        onPanCancel: _onPanEnd,
+                        onTapUp: (d) => _onTapUp(d, cell),
+                        child: CustomPaint(
+                          size: Size(cell * p.cols, cell * p.rows),
+                          painter: _BoardPainter(
+                            cols: p.cols,
+                            rows: p.rows,
+                            walls: p.walls,
+                            start: p.start,
+                            path: p.path,
+                            completed: p.completed,
+                            hints: p.hints,
+                            picking: _picking,
+                          ),
                         ),
                       ),
                     ),

@@ -59,8 +59,9 @@ class _CircuitGameState extends State<CircuitGame> {
     _puzzle =
         restored ??
         CircuitPuzzle.generate(size, random: widget.session.createRandom());
-    _clock = GameClock(
+    _clock = widget.session.createClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
+      onBackground: _save,
     );
     // 用时从进入游戏开始算；已完成的对局停在最终用时
     if (!_puzzle.solved) _clock.start();

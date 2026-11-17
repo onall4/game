@@ -64,12 +64,21 @@ void main() {
       expect(out.isNewBest, isTrue);
     });
 
-    test('清空纪录', () async {
-      final s = await AppServices.fromStore(MemoryStore());
+    test('清空纪录同时清除对局存档', () async {
+      final store = MemoryStore();
+      final s = await AppServices.fromStore(store);
       await s.records.recordResult(_result());
+      s.progress.save('circuit', 'easy', {'moves': 3});
+      await s.progress.flush();
+      expect(s.progress.has('circuit', 'easy'), isTrue);
+
       await s.resetProgress();
       expect(s.records.all, isEmpty);
       expect(s.outbox.length, 0);
+      expect(s.progress.has('circuit', 'easy'), isFalse);
+
+      final s2 = await AppServices.fromStore(store);
+      expect(s2.progress.has('circuit', 'easy'), isFalse);
     });
 
     test('损坏的 JSON 不会导致崩溃', () async {

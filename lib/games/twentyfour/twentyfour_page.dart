@@ -26,7 +26,8 @@ class TwentyFourGameView extends StatefulWidget {
   State<TwentyFourGameView> createState() => _TwentyFourGameViewState();
 }
 
-class _TwentyFourGameViewState extends State<TwentyFourGameView> {
+class _TwentyFourGameViewState extends State<TwentyFourGameView>
+    with SingleTickerProviderStateMixin {
   late final TwentyFourGame _game;
   late final GameClock _clock;
 
@@ -39,6 +40,18 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
 
   /// 算错时让牌晃一下。
   int _shake = 0;
+
+  /// 刚算出 24 的牌位：短暂展示合成出的 24，再切到下一题。
+  int? _solvedSlot;
+  late final AnimationController _solveAnim =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 300),
+      )..addStatusListener((status) {
+        if (status == AnimationStatus.completed && mounted) {
+          setState(() => _solvedSlot = null);
+        }
+      });
 
   @override
   void initState() {
@@ -62,8 +75,9 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
     if (!_game.completed && _game.answerShown) {
       _answer = bestSolution(_game.puzzles[_game.index])?.expression;
     }
-    _clock = GameClock(
+    _clock = widget.session.createClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
+      onBackground: _save,
     );
     // 用时从进入游戏开始算；已完成的对局停在最终用时
     if (!_game.completed) _clock.start();
@@ -79,6 +93,7 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
   @override
   void dispose() {
     _save();
+    _solveAnim.dispose();
     _clock.dispose();
     super.dispose();
   }
@@ -89,7 +104,9 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
   }
 
   void _tapCard(int i) {
-    if (_game.completed || _game.slots[i] == null) return;
+    if (_solvedSlot != null || _game.completed || _game.slots[i] == null) {
+      return;
+    }
     final haptics = AppScope.of(context).haptics;
     final first = _selected, op = _op;
     if (first == null || op == null || first == i) {
@@ -135,7 +152,9 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
         setState(() {
           _clearSelection();
           _answer = null;
+          _solvedSlot = i;
         });
+        _solveAnim.forward(from: 0);
     }
     if (_game.completed) _clock.stop();
     _save();
@@ -143,6 +162,7 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
   }
 
   void _tapOp(Op op) {
+    if (_solvedSlot != null) return;
     final haptics = AppScope.of(context).haptics;
     if (_selected == null) {
       haptics.error(); // 先选一张牌
@@ -153,27 +173,33 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
   }
 
   void _undo() {
-    if (!_game.undo()) return;
+    if (_solvedSlot != null || !_game.undo()) return;
     AppScope.of(context).haptics.tap();
     setState(_clearSelection);
     _save();
   }
 
   void _reset() {
-    if (!_game.reset()) return;
+    if (_solvedSlot != null || !_game.reset()) return;
     AppScope.of(context).haptics.tap();
     setState(_clearSelection);
     _save();
   }
 
   Future<void> _reveal() async {
-    if (_game.completed || _answer != null) return;
+    if (_solvedSlot != null || _game.completed || _answer != null) return;
     // 第一次看答案前提醒一下：看过答案的对局不计入最佳纪录
     if (_game.answersShown == 0) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (context) => const _RevealDialog(),
-      );
+      _clock.setPaused(true);
+      final bool? ok;
+      try {
+        ok = await showDialog<bool>(
+          context: context,
+          builder: (context) => const _RevealDialog(),
+        );
+      } finally {
+        _clock.setPaused(false);
+      }
       if (ok != true || !mounted) return;
     }
     setState(() => _answer = _game.revealAnswer());
@@ -198,7 +224,9 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
 
   @override
   Widget build(BuildContext context) {
-    final current = min(_game.index + 1, _game.total);
+    final solvedSlot = _solvedSlot;
+    final displayIndex = solvedSlot != null ? _game.index - 1 : _game.index;
+    final current = min(displayIndex + 1, _game.total);
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -209,7 +237,9 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
                 icon: Icons.style_outlined,
                 label: '题目',
                 value: '$current/${_game.total}',
-                color: _game.completed ? AppColors.coral : AppColors.paper,
+                color: _game.completed && solvedSlot == null
+                    ? AppColors.coral
+                    : AppColors.paper,
               ),
               GameClockPill(clock: _clock),
             ],
@@ -222,7 +252,26 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView> {
                   final side = min(c.maxWidth, c.maxHeight);
                   return SizedBox.square(
                     dimension: side,
-                    child: _game.completed
+                    child: solvedSlot != null
+                        ? AnimatedBuilder(
+                            animation: _solveAnim,
+                            builder: (context, child) => Transform.scale(
+                              scale: 1 + 0.06 * sin(_solveAnim.value * pi),
+                              child: child,
+                            ),
+                            child: _CardGrid(
+                              key: ValueKey('solved$displayIndex'),
+                              slots: [
+                                for (var k = 0; k < 4; k++)
+                                  k == solvedSlot ? Fraction(goal) : null,
+                              ],
+                              selected: null,
+                              solvedSlot: solvedSlot,
+                              animateEntry: false,
+                              onTap: _tapCard,
+                            ),
+                          )
+                        : _game.completed
                         ? const _AllDone()
                         : _Shake(
                             count: _shake,
@@ -319,58 +368,68 @@ class _CardGrid extends StatelessWidget {
     required this.slots,
     required this.selected,
     required this.onTap,
+    this.solvedSlot,
+    this.animateEntry = true,
   });
 
   final List<Fraction?> slots;
   final int? selected;
+  final int? solvedSlot;
+  final bool animateEntry;
   final ValueChanged<int> onTap;
 
   @override
   Widget build(BuildContext context) {
+    final grid = GridView.count(
+      crossAxisCount: 2,
+      mainAxisSpacing: 14,
+      crossAxisSpacing: 14,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(4),
+      children: [
+        for (var i = 0; i < slots.length; i++)
+          if (slots[i] case final value?)
+            Pressable(
+              key: ValueKey('card$i'),
+              semanticLabel: '$value',
+              color: solvedSlot == i
+                  ? AppColors.lemon
+                  : selected == i
+                  ? AppColors.coral
+                  : AppColors.paper,
+              radius: 20,
+              onTap: solvedSlot != null ? null : () => onTap(i),
+              child: Center(
+                child: FractionallySizedBox(
+                  widthFactor: 0.7,
+                  heightFactor: 0.5,
+                  child: FittedBox(
+                    child: Text('$value', style: AppText.number),
+                  ),
+                ),
+              ),
+            )
+          else
+            // 合并掉的牌位
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppDims.shadow),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.creamDeep,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+      ],
+    );
+    if (!animateEntry) return grid;
     // 新的一题出现时弹一下
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.85, end: 1),
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutBack,
       builder: (context, s, child) => Transform.scale(scale: s, child: child),
-      child: GridView.count(
-        crossAxisCount: 2,
-        mainAxisSpacing: 14,
-        crossAxisSpacing: 14,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(4),
-        children: [
-          for (var i = 0; i < slots.length; i++)
-            if (slots[i] case final value?)
-              Pressable(
-                key: ValueKey('card$i'),
-                semanticLabel: '$value',
-                color: selected == i ? AppColors.coral : AppColors.paper,
-                radius: 20,
-                onTap: () => onTap(i),
-                child: Center(
-                  child: FractionallySizedBox(
-                    widthFactor: 0.7,
-                    heightFactor: 0.5,
-                    child: FittedBox(
-                      child: Text('$value', style: AppText.number),
-                    ),
-                  ),
-                ),
-              )
-            else
-              // 合并掉的牌位
-              Padding(
-                padding: const EdgeInsets.only(bottom: AppDims.shadow),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppColors.creamDeep,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-              ),
-        ],
-      ),
+      child: grid,
     );
   }
 }

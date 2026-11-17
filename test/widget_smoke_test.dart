@@ -226,12 +226,23 @@ void main() {
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
     expect(services.progress.hasUnfinished('circuit', 'size4'), isTrue);
+    expect(find.text('进行中'), findsOneWidget, reason: '首页卡片提示有未完成对局');
 
     await tester.tap(find.text('回路'));
     await tester.pumpAndSettle();
     expect(rotationValue(), '1', reason: '应继续上一局');
 
+    // 未完成对局点重新开始需先确认；点取消保留原进度
     await tester.tap(find.byTooltip('重新开始'));
+    await tester.pumpAndSettle();
+    expect(find.text('重新开始？'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(rotationValue(), '1');
+
+    await tester.tap(find.byTooltip('重新开始'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChunkyButton, '重新开始'));
     await tester.pumpAndSettle();
     expect(rotationValue(), '0');
 

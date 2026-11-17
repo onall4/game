@@ -6,6 +6,8 @@ import 'dart:convert';
 /// 上层（Repository）只依赖这个接口，不直接接触任何具体存储插件，
 /// 以后要换成 SQLite / Hive / 加密存储时只需新增一个实现。
 abstract class KeyValueStore {
+  Iterable<String> get keys;
+
   String? getString(String key);
   Future<void> setString(String key, String value);
   Future<void> remove(String key);
@@ -44,6 +46,9 @@ class MemoryStore extends KeyValueStore {
   MemoryStore([Map<String, String>? initial]) : _data = {...?initial};
 
   final Map<String, String> _data;
+
+  @override
+  Iterable<String> get keys => List.unmodifiable(_data.keys);
 
   @override
   String? getString(String key) => _data[key];
