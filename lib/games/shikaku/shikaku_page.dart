@@ -48,6 +48,10 @@ class _ShikakuGameViewState extends State<ShikakuGameView> {
   (int, int)? _dragStart;
   (int, int)? _dragCurrent;
 
+  /// 按在已有矩形上时记录起点：原地抬起算点击清除，拖到别处则不清除。
+  (int, int)? _pressExisting;
+  bool _draggedFromExisting = false;
+
   ShikakuRect? get _preview {
     final s = _dragStart, e = _dragCurrent;
     if (s == null || e == null) return null;
@@ -138,6 +142,15 @@ class _ShikakuGameViewState extends State<ShikakuGameView> {
     if (_picking || _puzzle.solved) return;
     final rc = _exactCell(d.localPosition, cell);
     if (rc == null) return;
+    if (_puzzle.rectAt(rc.$1, rc.$2) != null) {
+      _pressExisting = rc;
+      _draggedFromExisting = false;
+      _dragStart = null;
+      _dragCurrent = null;
+      return;
+    }
+    _pressExisting = null;
+    _draggedFromExisting = false;
     setState(() {
       _dragStart = rc;
       _dragCurrent = rc;
@@ -145,14 +158,32 @@ class _ShikakuGameViewState extends State<ShikakuGameView> {
   }
 
   void _onPanUpdate(DragUpdateDetails d, double cell) {
-    if (_picking || _puzzle.solved || _dragStart == null) return;
+    if (_picking || _puzzle.solved) return;
     final rc = _clampedCell(d.localPosition, cell);
-    if (rc == _dragCurrent) return;
+    if (_pressExisting != null) {
+      if (rc != _pressExisting) _draggedFromExisting = true;
+      return;
+    }
+    if (_dragStart == null || rc == _dragCurrent) return;
     AppScope.of(context).haptics.tap();
     setState(() => _dragCurrent = rc);
   }
 
   void _onPanEnd() {
+    final haptics = AppScope.of(context).haptics;
+    if (_pressExisting case final existing?) {
+      final dragged = _draggedFromExisting;
+      _pressExisting = null;
+      _draggedFromExisting = false;
+      if (!dragged && _puzzle.removeAt(existing.$1, existing.$2)) {
+        haptics.tap();
+        setState(() {});
+        _save();
+      } else if (dragged) {
+        haptics.error();
+      }
+      return;
+    }
     final rect = _preview;
     _dragStart = null;
     _dragCurrent = null;
@@ -160,15 +191,8 @@ class _ShikakuGameViewState extends State<ShikakuGameView> {
       setState(() {});
       return;
     }
-    final haptics = AppScope.of(context).haptics;
-    // 单格轻点（或未拖出范围）：取消该处已有的矩形
     if (rect.area == 1) {
-      final removed = _puzzle.removeAt(rect.r1, rect.c1);
       setState(() {});
-      if (removed) {
-        haptics.tap();
-        _save();
-      }
       return;
     }
     final placed = _puzzle.place(rect);
@@ -182,6 +206,8 @@ class _ShikakuGameViewState extends State<ShikakuGameView> {
   }
 
   void _onPanCancel() {
+    _pressExisting = null;
+    _draggedFromExisting = false;
     if (_dragStart == null) return;
     setState(() {
       _dragStart = null;
@@ -229,9 +255,10 @@ class _ShikakuGameViewState extends State<ShikakuGameView> {
     if (_puzzle.solved) return '分割完成！';
     if (_picking) return '点任意一格，画出并锁定覆盖它的正确矩形';
     if (_preview case final p? when p.area > 1) {
+      if (_puzzle.hasOverlap(p)) return '与已有矩形重叠，请先点击已有矩形清除';
       return '正在框选：${p.width}×${p.height} = ${p.area} 格';
     }
-    return '拖动框出矩形（面积 = 数字），点击已有矩形可清除';
+    return '空白处拖动框出矩形，点击已有矩形可清除';
   }
 
   @override
@@ -292,6 +319,9 @@ class _ShikakuGameViewState extends State<ShikakuGameView> {
                               for (final r in p.rects) p.isHinted(r),
                             ],
                             preview: _preview,
+                            previewBlocked:
+                                _preview != null &&
+                                _puzzle.hasOverlap(_preview!),
                             picking: _picking,
                           ),
                         ),
@@ -338,6 +368,7 @@ class _ShikakuPainter extends CustomPainter {
     required this.validFlags,
     required this.hintedFlags,
     required this.preview,
+    this.previewBlocked = false,
     required this.picking,
   });
 
@@ -347,6 +378,7 @@ class _ShikakuPainter extends CustomPainter {
   final List<bool> validFlags;
   final List<bool> hintedFlags;
   final ShikakuRect? preview;
+  final bool previewBlocked;
   final bool picking;
 
   @override
@@ -412,14 +444,16 @@ class _ShikakuPainter extends CustomPainter {
       );
       canvas.drawRRect(
         box,
-        Paint()..color = AppColors.sky.withValues(alpha: 0.36),
+        Paint()
+          ..color = (previewBlocked ? AppColors.coral : AppColors.sky)
+              .withValues(alpha: 0.36),
       );
       canvas.drawRRect(
         box,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5
-          ..color = AppColors.ink,
+          ..color = previewBlocked ? AppColors.coral : AppColors.ink,
       );
     }
 
@@ -465,6 +499,7 @@ class _ShikakuPainter extends CustomPainter {
   bool shouldRepaint(_ShikakuPainter old) =>
       old.picking != picking ||
       old.preview != preview ||
+      old.previewBlocked != previewBlocked ||
       !listEquals(old.rects, rects) ||
       !listEquals(old.validFlags, validFlags) ||
       !listEquals(old.hintedFlags, hintedFlags);

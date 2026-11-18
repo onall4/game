@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart' show listEquals, setEquals;
@@ -44,16 +45,22 @@ class QueensGameView extends StatefulWidget {
 }
 
 class _QueensGameViewState extends State<QueensGameView> {
+  static const _doubleTapWindow = Duration(milliseconds: 320);
+
   late final QueensPuzzle _puzzle;
   late final GameClock _clock;
 
   bool _picking = false;
 
-  /// 手势跟踪：停留在按下格内抬起算单击；滑入其他格子转为批量标记/清除 ×。
+  /// 手势跟踪：停留在按下格内抬起算点击；滑入其他格子转为批量切换 × / 空白。
   int? _downCell;
   bool _sweeping = false;
   bool _sweepCross = true;
   int? _lastSweepCell;
+
+  /// 双击检测：单击立即切换 × / 空白，窗口期内再次点击同一格则升级为放置皇冠。
+  int? _lastTapCell;
+  Timer? _doubleTapTimer;
 
   @override
   void initState() {
@@ -91,8 +98,15 @@ class _QueensGameViewState extends State<QueensGameView> {
   @override
   void dispose() {
     _save();
+    _doubleTapTimer?.cancel();
     _clock.dispose();
     super.dispose();
+  }
+
+  void _clearDoubleTap() {
+    _doubleTapTimer?.cancel();
+    _doubleTapTimer = null;
+    _lastTapCell = null;
   }
 
   int? _cellAt(Offset pos, double cell) {
@@ -126,24 +140,44 @@ class _QueensGameViewState extends State<QueensGameView> {
   void _tapCell(int i) {
     if (_puzzle.solved) return;
     if (_picking) {
+      _clearDoubleTap();
       _useHint(i);
       return;
     }
     final haptics = AppScope.of(context).haptics;
     if (_puzzle.isHinted(i)) {
+      _clearDoubleTap();
       haptics.error();
       return;
     }
-    final beforeConflicts = _puzzle.conflicts.length;
-    setState(() => _puzzle.cycle(i));
-    if (_puzzle.conflicts.length > beforeConflicts) {
-      haptics.error();
-    } else if (_puzzle.markAt(i) == QueenMark.crown) {
-      haptics.light();
-    } else {
-      haptics.tap();
+
+    if (_lastTapCell == i && (_doubleTapTimer?.isActive ?? false)) {
+      _clearDoubleTap();
+      final beforeConflicts = _puzzle.conflicts.length;
+      setState(() => _puzzle.placeCrown(i));
+      _puzzle.conflicts.length > beforeConflicts
+          ? haptics.error()
+          : haptics.light();
+      _afterChange();
+      return;
     }
-    _afterChange();
+
+    // 已有皇冠：单击直接取下变回空白，且不作为下一次双击的起点
+    if (_puzzle.markAt(i) == QueenMark.crown) {
+      _clearDoubleTap();
+      setState(() => _puzzle.toggleCross(i));
+      haptics.tap();
+      _afterChange();
+      return;
+    }
+
+    // 空白 ↔ × 立即切换，并开启短暂窗口等待可能的第二次点击（双击放皇冠）
+    _doubleTapTimer?.cancel();
+    _lastTapCell = i;
+    _doubleTapTimer = Timer(_doubleTapWindow, () => _lastTapCell = null);
+    setState(() => _puzzle.toggleCross(i));
+    haptics.tap();
+    _save();
   }
 
   void _onPanDown(DragDownDetails d, double cell) {
@@ -164,6 +198,7 @@ class _QueensGameViewState extends State<QueensGameView> {
     if (!_sweeping) {
       if (i == _downCell) return;
       _sweeping = true;
+      _clearDoubleTap();
       final first = _downCell;
       if (first != null && _puzzle.setCross(first, cross: _sweepCross)) {
         AppScope.of(context).haptics.tap();
@@ -234,7 +269,7 @@ class _QueensGameViewState extends State<QueensGameView> {
     if (_puzzle.solved) return '全部就位！';
     if (_picking) return '点一格，揭晓并锁定它是皇冠还是 ×';
     if (_puzzle.conflicts.isNotEmpty) return '红框皇冠存在同行、同列、同区或相邻冲突';
-    return '点击放皇冠 / 标 ×，滑动可批量标 ×';
+    return '单击或滑动切换 ×，双击放置皇冠';
   }
 
   @override
@@ -508,11 +543,10 @@ class QueensCover extends StatelessWidget {
             ],
             solution: const [1, 3, 0, 2],
           )
-          ..cycle(1)
-          ..cycle(7)
-          ..cycle(8)
-          ..cycle(5)
-          ..cycle(5);
+          ..placeCrown(1)
+          ..placeCrown(7)
+          ..placeCrown(8)
+          ..toggleCross(5);
     return Container(
       color: AppColors.ink,
       padding: const EdgeInsets.all(6),

@@ -178,15 +178,14 @@ class ShikakuPuzzle {
     return null;
   }
 
-  /// 放置一个新矩形：自动替换与之重叠的普通矩形；若与提示锁定的矩形重叠则忽略。
+  /// [rect] 是否与任何已存在的矩形重叠。
+  bool hasOverlap(ShikakuRect rect) => _rects.any((e) => e.overlaps(rect));
+
+  /// 放置一个新矩形：不能与任何已存在的矩形重叠（已有矩形只能通过点击清除）。
   bool place(ShikakuRect rect) {
     if (solved || !_inBounds(size, rect)) return false;
-    if (_hinted.any((h) => h.overlaps(rect))) return false;
-    // 完全相同的普通矩形再画一次视为保留（单击由 removeAt 负责移除）
-    if (_rects.contains(rect)) return false;
-    _rects
-      ..removeWhere((e) => e.overlaps(rect))
-      ..add(rect);
+    if (hasOverlap(rect)) return false;
+    _rects.add(rect);
     return true;
   }
 

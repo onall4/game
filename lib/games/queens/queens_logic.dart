@@ -141,14 +141,22 @@ class QueensPuzzle {
     return _solution[r] == c ? QueenMark.crown : QueenMark.cross;
   }
 
-  /// 单击切换一格状态：空白 → 皇冠 → × → 空白。
-  bool cycle(int i) {
+  /// 单击格子：在「空白」与「×」之间切换（若原本是皇冠则取下变回空白）。
+  bool toggleCross(int i) {
     if (solved || i < 0 || i >= cellCount || _hinted.contains(i)) return false;
     _marks[i] = switch (_marks[i]) {
-      QueenMark.empty => QueenMark.crown,
-      QueenMark.crown => QueenMark.cross,
-      QueenMark.cross => QueenMark.empty,
+      QueenMark.empty => QueenMark.cross,
+      QueenMark.cross || QueenMark.crown => QueenMark.empty,
     };
+    _recompute();
+    return true;
+  }
+
+  /// 双击格子：放置皇冠。
+  bool placeCrown(int i) {
+    if (solved || i < 0 || i >= cellCount || _hinted.contains(i)) return false;
+    if (_marks[i] == QueenMark.crown) return false;
+    _marks[i] = QueenMark.crown;
     _recompute();
     return true;
   }

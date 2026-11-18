@@ -53,7 +53,7 @@ void main() {
           expect(countQueensSolutions(size, p.regions), 1, reason: modeId);
           expect(make().toJson(), p.toJson());
           for (var r = 0; r < size; r++) {
-            expect(p.cycle(r * size + p.solution[r]), isTrue);
+            expect(p.placeCrown(r * size + p.solution[r]), isTrue);
           }
           expect(p.solved, isTrue);
           expect(p.conflicts, isEmpty);
@@ -61,7 +61,7 @@ void main() {
       }
     });
 
-    test('冲突检测、滑动标 ×、提示锁定与存档往返', () {
+    test('单击切换 ×、双击放皇冠、冲突检测、提示锁定与存档往返', () {
       final p = QueensPuzzle.fromRegions(
         size: 4,
         regions: const [
@@ -72,12 +72,18 @@ void main() {
         ],
         solution: const [1, 3, 0, 2],
       );
+      // 单击在空白与 × 之间切换
+      expect(p.toggleCross(0), isTrue);
+      expect(p.markAt(0), QueenMark.cross);
+      expect(p.toggleCross(0), isTrue);
+      expect(p.markAt(0), QueenMark.empty);
+
       // 斜角相邻冲突：(0,1) 与 (1,2)
-      p.cycle(1);
-      p.cycle(6);
+      p.placeCrown(1);
+      p.placeCrown(6);
       expect(p.conflicts, {1, 6});
-      p.cycle(6); // 变成 ×
-      expect(p.markAt(6), QueenMark.cross);
+      p.toggleCross(6); // 已有皇冠单击取下变回空白
+      expect(p.markAt(6), QueenMark.empty);
       expect(p.conflicts, isEmpty);
 
       // 批量标 × 不会覆盖皇冠
@@ -88,7 +94,8 @@ void main() {
       // 提示锁定后不可再修改
       expect(p.applyHint(7), isTrue);
       expect(p.markAt(7), QueenMark.crown);
-      expect(p.cycle(7), isFalse);
+      expect(p.toggleCross(7), isFalse);
+      expect(p.placeCrown(7), isFalse);
 
       final restored = QueensPuzzle.fromJson(p.toJson());
       expect(restored.toJson(), p.toJson());
@@ -116,7 +123,7 @@ void main() {
       }
     });
 
-    test('重叠替换、移除、提示保护与存档往返', () {
+    test('新矩形不覆盖已有矩形，仅点击清除后才能重画；提示保护与存档往返', () {
       final p = ShikakuPuzzle.fromClues(
         size: 3,
         clues: const [
@@ -133,9 +140,14 @@ void main() {
       expect(p.place(const ShikakuRect(0, 0, 1, 1)), isTrue);
       expect(p.isRectValid(p.rects.single), isFalse, reason: '含两个数字，不合法');
 
-      // 新矩形自动替换与之重叠的旧矩形
+      // 与已有矩形重叠时拒绝放置，已有矩形保持原样
+      expect(p.place(const ShikakuRect(0, 0, 0, 2)), isFalse);
+      expect(p.rects, [const ShikakuRect(0, 0, 1, 1)]);
+
+      // 点击清除旧矩形后才能放置新矩形
+      expect(p.removeAt(0, 0), isTrue);
+      expect(p.rects, isEmpty);
       expect(p.place(const ShikakuRect(0, 0, 0, 2)), isTrue);
-      expect(p.rects, [const ShikakuRect(0, 0, 0, 2)]);
       expect(p.isRectValid(p.rects.single), isTrue);
 
       // 提示锁定的矩形不能被删除或覆盖
@@ -148,8 +160,8 @@ void main() {
     });
   });
 
-  group('熄灯逻辑', () {
-    test('GF(2) 求解器对各难度与任意随机按键组合都能找到最少步数解', () {
+  group('电灯逻辑', () {
+    test('GF(2) 求解器对各难度与任意随机按键组合都能找到全部点亮的最少步数解', () {
       for (final modeId in ['lo3', 'lo4e', 'lo4', 'lo5e', 'lo5', 'lo6']) {
         final cfg = LightsOutGameView.configFor(modeId);
         for (var s = 0; s < 5; s++) {
@@ -161,6 +173,7 @@ void main() {
             g.toggle(cell);
           }
           expect(g.solved, isTrue);
+          expect(g.litCount, g.cellCount);
         }
       }
       final rng = Random(42);
@@ -177,6 +190,7 @@ void main() {
             g.toggle(cell);
           }
           expect(g.solved, isTrue);
+          expect(g.litCount, n);
         }
       }
     });
@@ -184,7 +198,7 @@ void main() {
     test('提示与存档往返', () {
       final g = LightsOutGame.fromLitCells(
         size: 3,
-        litCells: const [0, 1, 3], // 左上角按一下即可熄灭
+        litCells: const [2, 4, 5, 6, 7, 8], // 仅 0,1,3 未亮，按左上角 0 即可全部点亮
       );
       expect(g.optimalMoves, 1);
       final hint = g.applyHint();
@@ -195,11 +209,12 @@ void main() {
       expect(restored.activeHint, 0);
       restored.toggle(0);
       expect(restored.solved, isTrue);
+      expect(restored.litCount, 9);
     });
   });
 
   group('三款新游戏界面通关流程', () {
-    testWidgets('皇冠：按唯一解点击放满皇冠即通关', (tester) async {
+    testWidgets('皇冠：单击切换 ×，双击放置皇冠，放满唯一解即通关', (tester) async {
       final services = await _pumpApp(tester);
       await _enter(tester, '皇冠');
       await _back(tester);
@@ -211,19 +226,30 @@ void main() {
 
       final board = tester.getRect(find.byKey(const ValueKey('queens-board')));
       final cell = board.width / puzzle.size;
+      Offset cellPos(int r, int c) =>
+          board.topLeft + Offset((c + 0.5) * cell, (r + 0.5) * cell);
+
+      // 单击非皇冠格：空白 → ×；间隔后再单击：× → 空白
+      final emptyCol = (puzzle.solution[0] + 1) % puzzle.size;
+      await tester.tapAt(cellPos(0, emptyCol));
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.tapAt(cellPos(0, emptyCol));
+      await tester.pump(const Duration(milliseconds: 450));
+
+      // 双击各行正确位置放置皇冠
       for (var r = 0; r < puzzle.size; r++) {
-        final c = puzzle.solution[r];
-        await tester.tapAt(
-          board.topLeft + Offset((c + 0.5) * cell, (r + 0.5) * cell),
-        );
-        await tester.pump();
+        final pos = cellPos(r, puzzle.solution[r]);
+        await tester.tapAt(pos);
+        await tester.pump(const Duration(milliseconds: 80));
+        await tester.tapAt(pos);
+        await tester.pump(const Duration(milliseconds: 450));
       }
       await tester.pumpAndSettle();
       expect(find.text('挑战成功！'), findsOneWidget);
       expect(services.records.recordOf('queens', ScoreKind.timeMs).plays, 1);
     });
 
-    testWidgets('数方：按唯一解拖动框出全部矩形即通关', (tester) async {
+    testWidgets('数方：拖动不覆盖已有矩形，点击清除后框出全部矩形即通关', (tester) async {
       final services = await _pumpApp(tester);
       await _enter(tester, '数方');
       await _back(tester);
@@ -238,8 +264,21 @@ void main() {
       Offset center(int r, int c) =>
           board.topLeft + Offset((c + 0.5) * cell, (r + 0.5) * cell);
 
+      // 先画第一个矩形，再尝试画一个与它重叠的框：不应覆盖已有矩形
+      final first = puzzle.solution.first;
+      var g = await tester.startGesture(center(first.r1, first.c1));
+      await g.moveTo(center(first.r2, first.c2));
+      await g.up();
+      await tester.pump();
+      expect(find.text('1/${puzzle.clueCount}'), findsOneWidget);
+
+      // 点击该矩形将其清除，再按唯一解全部框出
+      await tester.tapAt(center(first.r1, first.c1));
+      await tester.pump();
+      expect(find.text('0/${puzzle.clueCount}'), findsOneWidget);
+
       for (final rect in puzzle.solution) {
-        final g = await tester.startGesture(center(rect.r1, rect.c1));
+        g = await tester.startGesture(center(rect.r1, rect.c1));
         await g.moveTo(center(rect.r2, rect.c2));
         await g.up();
         await tester.pump();
@@ -249,16 +288,16 @@ void main() {
       expect(services.records.recordOf('shikaku', ScoreKind.timeMs).plays, 1);
     });
 
-    testWidgets('熄灯：按最优解点击全部熄灭即通关', (tester) async {
+    testWidgets('电灯：按最优解点击全部点亮即通关', (tester) async {
       final services = await _pumpApp(tester);
-      await _enter(tester, '熄灯');
+      await _enter(tester, '电灯');
       await _back(tester);
       final saved = services.progress.load('lightsout', 'lo3')!;
       final game = LightsOutGame.fromJson(
         3,
         (saved['game'] as Map).cast<String, dynamic>(),
       );
-      await _enter(tester, '熄灯');
+      await _enter(tester, '电灯');
 
       for (final cell in game.solveCurrent()) {
         await tester.tap(find.byKey(ValueKey('lamp-$cell')));

@@ -15,49 +15,54 @@ class LightsOutConfig {
   final int maxSteps;
 }
 
-/// “熄灯”（Lights Out）：
-/// 点击任意一格，会同时切换它自己与上下左右相邻格的开关状态；
-/// 把所有亮着的灯全部关掉即可过关。
+/// “电灯”（Lights On）：
+/// 点击任意一格，会同时切换它自己与上下左右相邻格的电灯开关；
+/// 把棋盘上所有电灯全部点亮即可过关。
 class LightsOutGame {
-  LightsOutGame._(this.size, this._board, this.optimalMoves);
+  LightsOutGame._(this.size, this._board, this.optimalMoves)
+    : _allOnMask = _fullMask(size);
 
   /// 每局可用的提示次数。
   static const maxHints = 3;
+
+  static BigInt _fullMask(int size) =>
+      (BigInt.one << (size * size)) - BigInt.one;
 
   factory LightsOutGame.generate(LightsOutConfig config, {Random? random}) {
     final rng = random ?? Random();
     final n = config.size * config.size;
     final solver = _Gf2Solver.forSize(config.size);
+    final allOn = _fullMask(config.size);
 
     for (var attempt = 0; attempt < 300; attempt++) {
       final k =
           config.minSteps + rng.nextInt(config.maxSteps - config.minSteps + 1);
       final order = List<int>.generate(n, (i) => i);
       shuffleWith(order, rng);
-      var board = BigInt.zero;
+      var board = allOn;
       for (final cell in order.take(k)) {
         board ^= solver.toggleMasks[cell];
       }
-      if (board == BigInt.zero) continue;
-      final opt = solver.minSolution(board)!;
+      if (board == allOn) continue;
+      final opt = solver.minSolution(allOn ^ board)!;
       if (opt.length >= config.minSteps && opt.length <= config.maxSteps) {
         return LightsOutGame._(config.size, board, opt.length);
       }
     }
-    // 兜底：至少保证非空且有解
+    // 兜底：至少保证非全亮且有解
     final k = max(1, config.minSteps);
     final order = List<int>.generate(n, (i) => i);
     shuffleWith(order, rng);
-    var board = BigInt.zero;
+    var board = allOn;
     for (final cell in order.take(k)) {
       board ^= solver.toggleMasks[cell];
     }
-    if (board == BigInt.zero) board = solver.toggleMasks[0];
-    final opt = solver.minSolution(board)!;
+    if (board == allOn) board ^= solver.toggleMasks[0];
+    final opt = solver.minSolution(allOn ^ board)!;
     return LightsOutGame._(config.size, board, opt.length);
   }
 
-  /// 用于测试：由给定的初始亮灯列表创建（必须有解）。
+  /// 用于测试：由给定的初始亮灯列表创建（必须能全部点亮）。
   factory LightsOutGame.fromLitCells({
     required int size,
     required Iterable<int> litCells,
@@ -66,8 +71,9 @@ class LightsOutGame {
     for (final i in litCells) {
       board |= BigInt.one << i;
     }
-    final opt = _Gf2Solver.forSize(size).minSolution(board);
-    if (opt == null) throw ArgumentError('该熄灯局面无解');
+    final allOn = _fullMask(size);
+    final opt = _Gf2Solver.forSize(size).minSolution(allOn ^ board);
+    if (opt == null) throw ArgumentError('该电灯局面无解');
     return LightsOutGame._(size, board, opt.length);
   }
 
@@ -76,19 +82,20 @@ class LightsOutGame {
     final size = json['size'] as int;
     final n = size * size;
     if (size != expectedSize || size < 2 || size > 8) {
-      throw const FormatException('熄灯存档尺寸不匹配');
+      throw const FormatException('电灯存档尺寸不匹配');
     }
     final lit = List<int>.from(json['lit'] as List);
     if (lit.any((i) => i < 0 || i >= n)) {
-      throw const FormatException('熄灯存档不合法');
+      throw const FormatException('电灯存档不合法');
     }
     var board = BigInt.zero;
     for (final i in lit) {
       board |= BigInt.one << i;
     }
-    if (board != BigInt.zero &&
-        _Gf2Solver.forSize(size).minSolution(board) == null) {
-      throw const FormatException('熄灯存档局面无解');
+    final allOn = _fullMask(size);
+    if (board != allOn &&
+        _Gf2Solver.forSize(size).minSolution(allOn ^ board) == null) {
+      throw const FormatException('电灯存档局面无解');
     }
     final optimal = (json['optimal'] as int?) ?? 1;
     final game = LightsOutGame._(size, board, max(1, optimal))
@@ -117,6 +124,7 @@ class LightsOutGame {
   };
 
   final int size;
+  final BigInt _allOnMask;
 
   /// 开局时的理论最少步数。
   final int optimalMoves;
@@ -128,7 +136,7 @@ class LightsOutGame {
 
   int get cellCount => size * size;
   int get moves => _moves;
-  bool get solved => _board == BigInt.zero;
+  bool get solved => _board == _allOnMask;
 
   int get litCount => _Gf2Solver.popcount(_board);
   bool isLit(int i) => (_board & (BigInt.one << i)) != BigInt.zero;
@@ -139,9 +147,9 @@ class LightsOutGame {
   /// 当前高亮推荐点击的格子（点掉后清除）。
   int? get activeHint => _activeHint;
 
-  /// 从当前盘面出发的最少步数解法。
+  /// 从当前盘面出发，把所有电灯点亮的最少步数解法。
   List<int> solveCurrent() =>
-      _Gf2Solver.forSize(size).minSolution(_board) ?? const [];
+      _Gf2Solver.forSize(size).minSolution(_allOnMask ^ _board) ?? const [];
 
   /// 点击第 [i] 格，翻转自身与上下左右相邻格。
   bool toggle(int i) {

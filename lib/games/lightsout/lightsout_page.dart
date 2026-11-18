@@ -118,9 +118,9 @@ class _LightsOutGameViewState extends State<LightsOutGameView> {
   }
 
   String get _status {
-    if (_game.solved) return '夜空安静下来了！';
-    if (_game.activeHint != null) return '点亮蓝框标出的格子，向最少步数靠近一步';
-    return '点击格子会翻转它与上下左右四格的灯光';
+    if (_game.solved) return '全部点亮！';
+    if (_game.activeHint != null) return '点击蓝框标出的格子，向最少步数靠近一步';
+    return '点击格子会翻转它与上下左右四格的电灯';
   }
 
   @override
@@ -140,9 +140,9 @@ class _LightsOutGameViewState extends State<LightsOutGameView> {
               GameClockPill(clock: _clock),
               StatPill(
                 icon: Icons.lightbulb_rounded,
-                label: '亮灯',
-                value: '${_game.litCount}',
-                color: _game.solved ? AppColors.sky : AppColors.paper,
+                label: '已亮',
+                value: '${_game.litCount}/${_game.cellCount}',
+                color: _game.solved ? AppColors.lemon : AppColors.paper,
               ),
             ],
           ),
@@ -265,13 +265,13 @@ class _LampTile extends StatelessWidget {
                 hinted
                     ? Icons.ads_click_rounded
                     : lit
-                    ? Icons.wb_incandescent_rounded
-                    : Icons.nightlight_round,
+                    ? Icons.lightbulb_rounded
+                    : Icons.lightbulb_outline_rounded,
                 color: lit
                     ? AppColors.ink
                     : hinted
                     ? AppColors.sky
-                    : const Color(0xFF5D547D),
+                    : const Color(0xFF6B628C),
               ),
             ),
           ),
