@@ -34,9 +34,10 @@ class _SchulteGameViewState extends State<SchulteGameView> {
   late final SchulteGame _game;
   late final GameClock _clock;
 
-  /// 刚点错的格子，短暂标红。
-  int? _wrongIndex;
-  Timer? _wrongTimer;
+  /// 刚点过的格子：点对短暂闪绿，点错短暂闪红，随后恢复原状。
+  int? _flashIndex;
+  bool _flashCorrect = false;
+  Timer? _flashTimer;
 
   @override
   void initState() {
@@ -75,9 +76,20 @@ class _SchulteGameViewState extends State<SchulteGameView> {
   @override
   void dispose() {
     _save();
-    _wrongTimer?.cancel();
+    _flashTimer?.cancel();
     _clock.dispose();
     super.dispose();
+  }
+
+  void _flash(int index, {required bool correct}) {
+    _flashTimer?.cancel();
+    setState(() {
+      _flashIndex = index;
+      _flashCorrect = correct;
+    });
+    _flashTimer = Timer(Duration(milliseconds: correct ? 220 : 260), () {
+      if (mounted) setState(() => _flashIndex = null);
+    });
   }
 
   void _tap(int i) {
@@ -87,14 +99,10 @@ class _SchulteGameViewState extends State<SchulteGameView> {
         return;
       case SchulteTap.wrong:
         haptics.error();
-        _wrongTimer?.cancel();
-        setState(() => _wrongIndex = i);
-        _wrongTimer = Timer(const Duration(milliseconds: 260), () {
-          if (mounted) setState(() => _wrongIndex = null);
-        });
+        _flash(i, correct: false);
       case SchulteTap.correct:
-        haptics.tap();
-        setState(() {});
+        haptics.light();
+        _flash(i, correct: true);
     }
     if (_game.completed) _clock.stop();
     _save();
@@ -170,7 +178,11 @@ class _SchulteGameViewState extends State<SchulteGameView> {
                         itemCount: _game.cells.length,
                         itemBuilder: (context, i) => _Tile(
                           number: _game.cells[i],
-                          wrong: _wrongIndex == i,
+                          feedback: _flashIndex == i
+                              ? (_flashCorrect
+                                    ? _TileFeedback.correct
+                                    : _TileFeedback.wrong)
+                              : _TileFeedback.none,
                           onTap: () => _tap(i),
                         ),
                       ),
@@ -186,15 +198,26 @@ class _SchulteGameViewState extends State<SchulteGameView> {
   }
 }
 
+enum _TileFeedback { none, correct, wrong }
+
 class _Tile extends StatelessWidget {
-  const _Tile({required this.number, required this.wrong, required this.onTap});
+  const _Tile({
+    required this.number,
+    required this.feedback,
+    required this.onTap,
+  });
 
   final int number;
-  final bool wrong;
+  final _TileFeedback feedback;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final color = switch (feedback) {
+      _TileFeedback.correct => AppColors.mint,
+      _TileFeedback.wrong => AppColors.coral,
+      _TileFeedback.none => AppColors.paper,
+    };
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       // 按下即响应：比抬起手指才算更跟手，适合比快的游戏
@@ -202,7 +225,7 @@ class _Tile extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         decoration: BoxDecoration(
-          color: wrong ? AppColors.coral : AppColors.paper,
+          color: color,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.ink, width: 2),
         ),
