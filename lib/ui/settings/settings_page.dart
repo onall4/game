@@ -344,10 +344,7 @@ class _GameStatsTile extends StatelessWidget {
               const SizedBox(width: 8),
               Text(game.title, style: AppText.subtitle),
               const Spacer(),
-              Text(
-                '${record.plays} 局 · 胜 ${record.wins}',
-                style: AppText.caption,
-              ),
+              Text('${record.plays} 局', style: AppText.caption),
             ],
           ),
           const SizedBox(height: 8),

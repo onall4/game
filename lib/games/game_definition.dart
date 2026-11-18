@@ -37,7 +37,6 @@ class GameMode {
 /// 一局结束时由具体游戏上报给外壳的数据。
 class GameFinish {
   const GameFinish({
-    required this.won,
     required this.score,
     required this.durationMs,
     this.details = const [],
@@ -46,7 +45,6 @@ class GameFinish {
   });
 
   factory GameFinish.fromJson(Map<String, dynamic> json) => GameFinish(
-    won: json['won'] as bool,
     score: json['score'] as int,
     durationMs: json['durationMs'] as int,
     details: [
@@ -57,21 +55,19 @@ class GameFinish {
     assisted: json['assisted'] as bool? ?? false,
   );
 
-  final bool won;
   final int score;
   final int durationMs;
 
   /// 结算页额外展示的数据，如 ("步数", "32")。
   final List<(String, String)> details;
 
-  /// 结算页副标题，如失败时揭晓答案。
+  /// 结算页副标题。
   final String? message;
 
   /// 是否借助提示完成（不刷新最佳纪录）。
   final bool assisted;
 
   Map<String, dynamic> toJson() => {
-    'won': won,
     'score': score,
     'durationMs': durationMs,
     'details': [

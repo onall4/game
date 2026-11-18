@@ -10,7 +10,6 @@ class GameResult {
   GameResult({
     required this.gameId,
     required this.modeId,
-    required this.won,
     required this.score,
     required this.scoreKind,
     required this.durationMs,
@@ -24,7 +23,6 @@ class GameResult {
     id: json['id'] as String,
     gameId: json['gameId'] as String,
     modeId: json['modeId'] as String,
-    won: json['won'] as bool,
     score: json['score'] as int,
     scoreKind: ScoreKind.values.byName(json['scoreKind'] as String),
     durationMs: json['durationMs'] as int,
@@ -36,12 +34,11 @@ class GameResult {
   final String id;
   final String gameId;
   final String modeId;
-  final bool won;
   final int score;
   final ScoreKind scoreKind;
   final int durationMs;
 
-  /// 是否借助了提示完成。借助提示的对局计入局数与胜场，但不刷新最佳纪录。
+  /// 是否借助了提示完成。借助提示的对局计入局数，但不刷新最佳纪录。
   final bool assisted;
   final DateTime playedAt;
 
@@ -49,7 +46,6 @@ class GameResult {
     'id': id,
     'gameId': gameId,
     'modeId': modeId,
-    'won': won,
     'score': score,
     'scoreKind': scoreKind.name,
     'durationMs': durationMs,

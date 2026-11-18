@@ -222,7 +222,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
     final gameId = widget.game.id;
     final RecordOutcome outcome;
     if (handle.customSeed) {
-      // 指定种子的对局不计入纪录（局数、胜场、最佳、时长），也不上传
+      // 指定种子的对局不计入纪录（局数、最佳、时长），也不上传
       outcome = RecordOutcome(
         record: services.records.recordOf(gameId, widget.game.scoreKind),
         isNewBest: false,
@@ -231,7 +231,6 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       final result = GameResult(
         gameId: gameId,
         modeId: modeId,
-        won: finish.won,
         score: finish.score,
         scoreKind: widget.game.scoreKind,
         durationMs: finish.durationMs,
@@ -241,7 +240,7 @@ class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
       // 接入服务器后，这里会在后台把结果推送上去；离线模式下是空操作。
       services.sync.sync();
     }
-    finish.won ? services.haptics.success() : services.haptics.error();
+    services.haptics.success();
 
     // 把结算数据写进这一局的存档：退出再进来仍是完成画面，奖杯可查看成绩
     if (handle.active) {

@@ -72,7 +72,6 @@ class _ResultSheetState extends State<_ResultSheet> {
     final outcome = widget.outcome;
     final kind = game.scoreKind;
     final best = outcome.record.mode(mode.id).best;
-    final won = finish.won;
 
     return SafeArea(
       child: Padding(
@@ -102,20 +101,15 @@ class _ResultSheetState extends State<_ResultSheet> {
                 Container(
                   width: 72,
                   height: 72,
-                  decoration: chunkyDecoration(
-                    color: won ? game.color : AppColors.creamDeep,
-                    radius: 22,
-                  ),
-                  child: Icon(
-                    won
-                        ? Icons.emoji_events_rounded
-                        : Icons.sentiment_dissatisfied_rounded,
+                  decoration: chunkyDecoration(color: game.color, radius: 22),
+                  child: const Icon(
+                    Icons.emoji_events_rounded,
                     size: 40,
                     color: AppColors.ink,
                   ),
                 ),
                 const SizedBox(height: 14),
-                Text(won ? '挑战成功！' : '差一点点…', style: AppText.display),
+                const Text('挑战成功！', style: AppText.display),
                 const SizedBox(height: 6),
                 Text(
                   finish.message ?? '${game.title} · ${mode.label}',
@@ -143,7 +137,7 @@ class _ResultSheetState extends State<_ResultSheet> {
                   ),
                   child: Column(
                     children: [
-                      if (won) _row(kind.label, kind.format(finish.score)),
+                      _row(kind.label, kind.format(finish.score)),
                       for (final (label, value) in finish.details)
                         _row(label, value),
                       _row('最佳纪录', best == null ? '暂无' : kind.format(best)),

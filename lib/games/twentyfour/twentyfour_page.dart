@@ -210,7 +210,6 @@ class _TwentyFourGameViewState extends State<TwentyFourGameView>
     final shown = _game.answersShown;
     widget.session.onFinish(
       GameFinish(
-        won: true,
         score: _clock.elapsedMs,
         durationMs: _clock.elapsedMs,
         assisted: shown > 0,

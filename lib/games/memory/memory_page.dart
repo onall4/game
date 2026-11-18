@@ -136,7 +136,6 @@ class _MemoryGameViewState extends State<MemoryGameView> {
   void _finish() {
     widget.session.onFinish(
       GameFinish(
-        won: true,
         score: _game.moves,
         durationMs: _clock.elapsedMs,
         details: [

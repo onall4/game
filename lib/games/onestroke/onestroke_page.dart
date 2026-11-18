@@ -197,7 +197,6 @@ class _OneStrokeGameViewState extends State<OneStrokeGameView> {
     final hints = _puzzle.hintsUsed;
     widget.session.onFinish(
       GameFinish(
-        won: true,
         score: _clock.elapsedMs,
         durationMs: _clock.elapsedMs,
         assisted: hints > 0,

@@ -133,7 +133,6 @@ class _CircuitGameState extends State<CircuitGame> {
     final hints = _puzzle.hintsUsed;
     widget.session.onFinish(
       GameFinish(
-        won: true,
         score: _clock.elapsedMs,
         durationMs: _clock.elapsedMs,
         assisted: hints > 0,

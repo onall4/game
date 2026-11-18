@@ -3,6 +3,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:game/app.dart';
 import 'package:game/core/app_services.dart';
+import 'package:game/core/data/models/game_result.dart';
+import 'package:game/core/data/models/score_kind.dart';
 import 'package:game/core/storage/key_value_store.dart';
 import 'package:game/core/data/repositories/progress_repository.dart';
 import 'package:game/games/circuit/circuit_logic.dart';
@@ -37,13 +39,49 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('首页展示全部游戏', (tester) async {
-    await pumpApp(tester);
+  testWidgets('首页展示全部游戏，且不展示胜场统计', (tester) async {
+    final services = await pumpApp(tester);
     expect(find.text('今天玩点什么？'), findsOneWidget);
+    expect(find.text('胜利'), findsNothing);
     for (final g in gameRegistry) {
       await showOnHome(tester, g.title);
       expect(find.text(g.title), findsOneWidget);
     }
+
+    // 有无「进行中」标签时，卡片右上角的「已玩 n 局」都能严格右对齐
+    await services.records.recordResult(
+      GameResult(
+        gameId: 'circuit',
+        modeId: 'size4',
+        score: 1000,
+        scoreKind: ScoreKind.timeMs,
+        durationMs: 1000,
+      ),
+    );
+    await services.records.recordResult(
+      GameResult(
+        gameId: 'codebreaker',
+        modeId: 'easy',
+        score: 3,
+        scoreKind: ScoreKind.attempts,
+        durationMs: 1000,
+      ),
+    );
+    services.progress.save('circuit', 'size4', {'moves': 1});
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.text('回路'),
+      -200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('进行中'), findsOneWidget);
+    final playsRects = tester
+        .widgetList<Text>(find.text('已玩 1 局'))
+        .map((w) => tester.getRect(find.byWidget(w)))
+        .toList();
+    expect(playsRects.length, 2);
+    expect(playsRects[0].right, closeTo(playsRects[1].right, 0.5));
   });
 
   for (final game in gameRegistry) {
@@ -114,6 +152,7 @@ void main() {
         scrollable: find.byType(Scrollable).first, // 设置页主列表
       );
       await tester.pumpAndSettle();
+      expect(find.textContaining('· 胜'), findsNothing);
       final last = find.descendant(
         of: find.byKey(ValueKey('stats-${game.id}')),
         matching: find.text(game.modes.last.label),

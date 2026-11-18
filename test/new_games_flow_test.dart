@@ -59,6 +59,22 @@ void main() {
       expect(_statValue(tester, '下一个'), '$n');
       await tester.tap(number(n));
       await tester.pump();
+      if (n == 1) {
+        // 已找过的数字外观与其他格子保持一致，不置灰或变色
+        final c1 = tester.widget<AnimatedContainer>(
+          find.ancestor(
+            of: number(1),
+            matching: find.byType(AnimatedContainer),
+          ),
+        );
+        final c2 = tester.widget<AnimatedContainer>(
+          find.ancestor(
+            of: number(2),
+            matching: find.byType(AnimatedContainer),
+          ),
+        );
+        expect(c1.decoration, c2.decoration);
+      }
     }
     await tester.pumpAndSettle();
     expect(find.text('挑战成功！'), findsOneWidget);

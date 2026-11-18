@@ -266,7 +266,6 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     if (_game.won) {
       widget.session.onFinish(
         GameFinish(
-          won: true,
           score: _game.attemptsUsed,
           durationMs: _clock.elapsedMs,
           details: [('用时', formatDuration(_clock.elapsedMs))],

@@ -105,7 +105,6 @@ class _SchulteGameViewState extends State<SchulteGameView> {
     final m = _game.mistakes;
     widget.session.onFinish(
       GameFinish(
-        won: true,
         score: _clock.elapsedMs + m * SchulteGame.penaltyMs,
         durationMs: _clock.elapsedMs,
         details: [
@@ -169,15 +168,11 @@ class _SchulteGameViewState extends State<SchulteGameView> {
                           crossAxisSpacing: gap,
                         ),
                         itemCount: _game.cells.length,
-                        itemBuilder: (context, i) {
-                          final n = _game.cells[i];
-                          return _Tile(
-                            number: n,
-                            found: _game.isFound(n),
-                            wrong: _wrongIndex == i,
-                            onTap: () => _tap(i),
-                          );
-                        },
+                        itemBuilder: (context, i) => _Tile(
+                          number: _game.cells[i],
+                          wrong: _wrongIndex == i,
+                          onTap: () => _tap(i),
+                        ),
                       ),
                     ),
                   );
@@ -192,25 +187,14 @@ class _SchulteGameViewState extends State<SchulteGameView> {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({
-    required this.number,
-    required this.found,
-    required this.wrong,
-    required this.onTap,
-  });
+  const _Tile({required this.number, required this.wrong, required this.onTap});
 
   final int number;
-  final bool found;
   final bool wrong;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = wrong
-        ? AppColors.coral
-        : found
-        ? AppColors.sky.withValues(alpha: 0.45)
-        : AppColors.paper;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       // 按下即响应：比抬起手指才算更跟手，适合比快的游戏
@@ -218,25 +202,15 @@ class _Tile extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 120),
         decoration: BoxDecoration(
-          color: color,
+          color: wrong ? AppColors.coral : AppColors.paper,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: found ? AppColors.inkFaint : AppColors.ink,
-            width: 2,
-          ),
+          border: Border.all(color: AppColors.ink, width: 2),
         ),
         alignment: Alignment.center,
         child: FractionallySizedBox(
           widthFactor: 0.62,
           heightFactor: 0.62,
-          child: FittedBox(
-            child: Text(
-              '$number',
-              style: AppText.number.copyWith(
-                color: found ? AppColors.inkSoft : AppColors.ink,
-              ),
-            ),
-          ),
+          child: FittedBox(child: Text('$number', style: AppText.number)),
         ),
       ),
     );
@@ -264,7 +238,7 @@ class SchulteCover extends StatelessWidget {
             Container(
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: n <= 2 ? AppColors.lemon : AppColors.paper,
+                color: n == 1 ? AppColors.lemon : AppColors.paper,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: AppColors.ink, width: 1.6),
               ),

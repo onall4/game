@@ -42,9 +42,7 @@ class _FakeBoardState extends State<_FakeBoard> {
     setState(() => done = true);
     // 与真实游戏一致：先保存最终状态，再上报完成
     widget.session.saveProgress({'done': true});
-    widget.session.onFinish(
-      const GameFinish(won: true, score: 7, durationMs: 1000),
-    );
+    widget.session.onFinish(const GameFinish(score: 7, durationMs: 1000));
   }
 
   @override
