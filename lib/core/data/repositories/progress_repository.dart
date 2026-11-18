@@ -24,6 +24,8 @@ class ProgressRepository extends ChangeNotifier {
 
   final KeyValueStore _store;
   final Map<String, Map<String, dynamic>?> _cache = {};
+  final Map<String, Map<String, dynamic>> _pendingWrites = {};
+  bool _flushScheduled = false;
 
   Map<String, dynamic>? load(String gameId, String modeId) {
     final key = StorageKeys.progress(gameId, modeId);
@@ -42,7 +44,8 @@ class ProgressRepository extends ChangeNotifier {
     _update(gameId, modeId, () {
       final key = StorageKeys.progress(gameId, modeId);
       _cache[key] = state;
-      _store.setJson(key, state);
+      _pendingWrites[key] = state;
+      _scheduleFlush();
     });
   }
 
@@ -50,7 +53,43 @@ class ProgressRepository extends ChangeNotifier {
     _update(gameId, modeId, () {
       final key = StorageKeys.progress(gameId, modeId);
       _cache[key] = null;
+      _pendingWrites.remove(key);
       _store.remove(key);
+    });
+  }
+
+  /// 清空所有游戏、所有难度的对局存档。
+  Future<void> clearAll() async {
+    final hadAny =
+        _cache.values.any((v) => v != null) ||
+        _store.keys.any((k) => k.startsWith(StorageKeys.progressPrefix));
+    _pendingWrites.clear();
+    _cache.clear();
+    final keys = _store.keys
+        .where((k) => k.startsWith(StorageKeys.progressPrefix))
+        .toList();
+    for (final k in keys) {
+      await _store.remove(k);
+    }
+    if (hadAny) _notifySoon();
+  }
+
+  /// 立即把尚未落盘的存档写入底层存储（如切到后台或销毁页面时）。
+  Future<void> flush() async {
+    if (_pendingWrites.isEmpty) return;
+    final entries = _pendingWrites.entries.toList();
+    _pendingWrites.clear();
+    for (final e in entries) {
+      await _store.setJson(e.key, e.value);
+    }
+  }
+
+  void _scheduleFlush() {
+    if (_flushScheduled) return;
+    _flushScheduled = true;
+    scheduleMicrotask(() {
+      _flushScheduled = false;
+      flush();
     });
   }
 

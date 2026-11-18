@@ -126,7 +126,9 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const Center(child: Text('拾趣 · v0.1.0', style: AppText.caption)),
+              const Center(
+                child: Text('拾趣 · v${AppMeta.version}', style: AppText.caption),
+              ),
             ],
           ),
         ),
@@ -148,7 +150,7 @@ class SettingsPage extends StatelessWidget {
               const Text('确定清空？', style: AppText.title),
               const SizedBox(height: 8),
               const Text(
-                '所有游戏的对局数与最佳纪录将被删除，且无法恢复。',
+                '所有游戏的对局数、最佳纪录与当前存档将被删除，且无法恢复。',
                 style: AppText.body,
                 textAlign: TextAlign.center,
               ),
@@ -342,10 +344,7 @@ class _GameStatsTile extends StatelessWidget {
               const SizedBox(width: 8),
               Text(game.title, style: AppText.subtitle),
               const Spacer(),
-              Text(
-                '${record.plays} 局 · 胜 ${record.wins}',
-                style: AppText.caption,
-              ),
+              Text('${record.plays} 局', style: AppText.caption),
             ],
           ),
           const SizedBox(height: 8),

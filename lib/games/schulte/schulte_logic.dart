@@ -29,7 +29,7 @@ enum SchulteTap {
   /// 点错了（计一次失误）
   wrong,
 
-  /// 无效点击（已完成，或点的是已经找过的数字）
+  /// 无效点击（已完成）
   ignored,
 }
 
@@ -96,15 +96,9 @@ class SchulteGame {
   int get foundCount => config.descending ? config.count - _next : _next - 1;
   bool get completed => foundCount == config.count;
 
-  /// 这个数字是否已经点过。
-  bool isFound(int number) =>
-      config.descending ? number > _next : number < _next;
-
   SchulteTap tap(int index) {
     if (completed) return SchulteTap.ignored;
-    final number = cells[index];
-    if (isFound(number)) return SchulteTap.ignored;
-    if (number != _next) {
+    if (cells[index] != _next) {
       _mistakes++;
       return SchulteTap.wrong;
     }

@@ -3,33 +3,23 @@ import 'score_kind.dart';
 
 /// 某个游戏在某个模式（难度）下的累计统计。
 class ModeStats {
-  const ModeStats({
-    this.plays = 0,
-    this.wins = 0,
-    this.best,
-    this.totalDurationMs = 0,
-  });
+  const ModeStats({this.plays = 0, this.best, this.totalDurationMs = 0});
 
   factory ModeStats.fromJson(Map<String, dynamic> json) => ModeStats(
     plays: json['plays'] as int? ?? 0,
-    wins: json['wins'] as int? ?? 0,
     best: json['best'] as int?,
     totalDurationMs: json['totalDurationMs'] as int? ?? 0,
   );
 
   final int plays;
-  final int wins;
 
-  /// 最佳成绩（仅统计获胜的对局），含义由 [ScoreKind] 决定。
+  /// 最佳成绩，含义由 [ScoreKind] 决定。
   final int? best;
   final int totalDurationMs;
 
   ModeStats apply(GameResult r) => ModeStats(
     plays: plays + 1,
-    wins: wins + (r.won ? 1 : 0),
-    best: r.won && !r.assisted && r.scoreKind.isBetter(r.score, best)
-        ? r.score
-        : best,
+    best: !r.assisted && r.scoreKind.isBetter(r.score, best) ? r.score : best,
     totalDurationMs: totalDurationMs + r.durationMs,
   );
 
@@ -41,7 +31,6 @@ class ModeStats {
     }
     return ModeStats(
       plays: plays > other.plays ? plays : other.plays,
-      wins: wins > other.wins ? wins : other.wins,
       best: mergedBest,
       totalDurationMs: totalDurationMs > other.totalDurationMs
           ? totalDurationMs
@@ -51,7 +40,6 @@ class ModeStats {
 
   Map<String, dynamic> toJson() => {
     'plays': plays,
-    'wins': wins,
     if (best != null) 'best': best,
     'totalDurationMs': totalDurationMs,
   };
@@ -102,7 +90,6 @@ class GameRecord {
   final bool dirty;
 
   int get plays => modes.values.fold(0, (s, m) => s + m.plays);
-  int get wins => modes.values.fold(0, (s, m) => s + m.wins);
   int get totalDurationMs =>
       modes.values.fold(0, (s, m) => s + m.totalDurationMs);
 

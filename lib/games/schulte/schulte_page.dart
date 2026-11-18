@@ -34,9 +34,10 @@ class _SchulteGameViewState extends State<SchulteGameView> {
   late final SchulteGame _game;
   late final GameClock _clock;
 
-  /// 刚点错的格子，短暂标红。
-  int? _wrongIndex;
-  Timer? _wrongTimer;
+  /// 刚点过的格子：点对短暂闪绿，点错短暂闪红，随后恢复原状。
+  int? _flashIndex;
+  bool _flashCorrect = false;
+  Timer? _flashTimer;
 
   @override
   void initState() {
@@ -56,9 +57,10 @@ class _SchulteGameViewState extends State<SchulteGameView> {
     }
     _game =
         restored ?? SchulteGame(config, random: widget.session.createRandom());
-    _clock = GameClock(
+    _clock = widget.session.createClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
       resolutionMs: 10,
+      onBackground: _save,
     );
     // 用时从进入游戏开始算；已完成的对局停在最终用时
     if (!_game.completed) _clock.start();
@@ -74,9 +76,20 @@ class _SchulteGameViewState extends State<SchulteGameView> {
   @override
   void dispose() {
     _save();
-    _wrongTimer?.cancel();
+    _flashTimer?.cancel();
     _clock.dispose();
     super.dispose();
+  }
+
+  void _flash(int index, {required bool correct}) {
+    _flashTimer?.cancel();
+    setState(() {
+      _flashIndex = index;
+      _flashCorrect = correct;
+    });
+    _flashTimer = Timer(Duration(milliseconds: correct ? 220 : 260), () {
+      if (mounted) setState(() => _flashIndex = null);
+    });
   }
 
   void _tap(int i) {
@@ -86,14 +99,10 @@ class _SchulteGameViewState extends State<SchulteGameView> {
         return;
       case SchulteTap.wrong:
         haptics.error();
-        _wrongTimer?.cancel();
-        setState(() => _wrongIndex = i);
-        _wrongTimer = Timer(const Duration(milliseconds: 260), () {
-          if (mounted) setState(() => _wrongIndex = null);
-        });
+        _flash(i, correct: false);
       case SchulteTap.correct:
-        haptics.tap();
-        setState(() {});
+        haptics.light();
+        _flash(i, correct: true);
     }
     if (_game.completed) _clock.stop();
     _save();
@@ -104,7 +113,6 @@ class _SchulteGameViewState extends State<SchulteGameView> {
     final m = _game.mistakes;
     widget.session.onFinish(
       GameFinish(
-        won: true,
         score: _clock.elapsedMs + m * SchulteGame.penaltyMs,
         durationMs: _clock.elapsedMs,
         details: [
@@ -149,33 +157,35 @@ class _SchulteGameViewState extends State<SchulteGameView> {
                 builder: (context, c) {
                   final side = min(c.maxWidth, c.maxHeight);
                   final gap = size >= 6 ? 5.0 : 7.0;
-                  return Container(
-                    key: const ValueKey('schulte-board'),
-                    width: side,
-                    height: side,
-                    padding: EdgeInsets.all(gap + 2),
-                    decoration: chunkyDecoration(
-                      color: AppColors.creamDeep,
-                      radius: 22,
-                    ),
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: EdgeInsets.zero,
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: size,
-                        mainAxisSpacing: gap,
-                        crossAxisSpacing: gap,
+                  return RepaintBoundary(
+                    child: Container(
+                      key: const ValueKey('schulte-board'),
+                      width: side,
+                      height: side,
+                      padding: EdgeInsets.all(gap + 2),
+                      decoration: chunkyDecoration(
+                        color: AppColors.creamDeep,
+                        radius: 22,
                       ),
-                      itemCount: _game.cells.length,
-                      itemBuilder: (context, i) {
-                        final n = _game.cells[i];
-                        return _Tile(
-                          number: n,
-                          found: _game.isFound(n),
-                          wrong: _wrongIndex == i,
+                      child: GridView.builder(
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: size,
+                          mainAxisSpacing: gap,
+                          crossAxisSpacing: gap,
+                        ),
+                        itemCount: _game.cells.length,
+                        itemBuilder: (context, i) => _Tile(
+                          number: _game.cells[i],
+                          feedback: _flashIndex == i
+                              ? (_flashCorrect
+                                    ? _TileFeedback.correct
+                                    : _TileFeedback.wrong)
+                              : _TileFeedback.none,
                           onTap: () => _tap(i),
-                        );
-                      },
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -188,26 +198,26 @@ class _SchulteGameViewState extends State<SchulteGameView> {
   }
 }
 
+enum _TileFeedback { none, correct, wrong }
+
 class _Tile extends StatelessWidget {
   const _Tile({
     required this.number,
-    required this.found,
-    required this.wrong,
+    required this.feedback,
     required this.onTap,
   });
 
   final int number;
-  final bool found;
-  final bool wrong;
+  final _TileFeedback feedback;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = wrong
-        ? AppColors.coral
-        : found
-        ? AppColors.sky.withValues(alpha: 0.45)
-        : AppColors.paper;
+    final color = switch (feedback) {
+      _TileFeedback.correct => AppColors.mint,
+      _TileFeedback.wrong => AppColors.coral,
+      _TileFeedback.none => AppColors.paper,
+    };
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       // 按下即响应：比抬起手指才算更跟手，适合比快的游戏
@@ -217,23 +227,13 @@ class _Tile extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: found ? AppColors.inkFaint : AppColors.ink,
-            width: 2,
-          ),
+          border: Border.all(color: AppColors.ink, width: 2),
         ),
         alignment: Alignment.center,
         child: FractionallySizedBox(
           widthFactor: 0.62,
           heightFactor: 0.62,
-          child: FittedBox(
-            child: Text(
-              '$number',
-              style: AppText.number.copyWith(
-                color: found ? AppColors.inkSoft : AppColors.ink,
-              ),
-            ),
-          ),
+          child: FittedBox(child: Text('$number', style: AppText.number)),
         ),
       ),
     );
@@ -261,7 +261,7 @@ class SchulteCover extends StatelessWidget {
             Container(
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: n <= 2 ? AppColors.lemon : AppColors.paper,
+                color: n == 1 ? AppColors.lemon : AppColors.paper,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: AppColors.ink, width: 1.6),
               ),

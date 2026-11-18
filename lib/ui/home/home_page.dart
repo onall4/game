@@ -39,6 +39,7 @@ class _HomePageState extends State<HomePage> {
             services.records,
             services.player,
             services.settings, // 卡片显示上次选择的难度
+            services.progress, // 卡片显示未完成对局标识
           ]),
           builder: (context, _) => CustomScrollView(
             slivers: [
@@ -149,7 +150,6 @@ class _StatsBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final records = services.records.all;
     final plays = records.fold(0, (s, r) => s + r.plays);
-    final wins = records.fold(0, (s, r) => s + r.wins);
     final minutes = records.fold(0, (s, r) => s + r.totalDurationMs) ~/ 60000;
 
     return ChunkyBox(
@@ -159,8 +159,6 @@ class _StatsBanner extends StatelessWidget {
       child: Row(
         children: [
           _stat('总对局', '$plays'),
-          _divider(),
-          _stat('胜利', '$wins'),
           _divider(),
           _stat('游戏时长', minutes < 1 ? '<1 分' : '$minutes 分'),
         ],
@@ -239,6 +237,7 @@ class _GameCard extends StatelessWidget {
     final record = services.records.recordOf(game.id, game.scoreKind);
     final mode = game.modeById(services.settings.lastMode(game.id));
     final best = record.mode(mode.id).best;
+    final unfinished = services.progress.hasUnfinished(game.id, mode.id);
 
     return Pressable(
       onTap: onTap,
@@ -255,7 +254,7 @@ class _GameCard extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(13.5),
-              child: game.coverBuilder(context),
+              child: RepaintBoundary(child: game.coverBuilder(context)),
             ),
           ),
           const SizedBox(width: 14),
@@ -269,9 +268,22 @@ class _GameCard extends StatelessWidget {
                       label: game.category.label,
                       color: game.category.color,
                     ),
-                    const Spacer(),
-                    if (record.plays > 0)
-                      Text('已玩 ${record.plays} 局', style: AppText.caption),
+                    if (unfinished) ...[
+                      const SizedBox(width: 6),
+                      const TagChip(label: '进行中', color: AppColors.lemon),
+                    ],
+                    if (record.plays > 0) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '已玩 ${record.plays} 局',
+                          style: AppText.caption,
+                          textAlign: TextAlign.right,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 6),

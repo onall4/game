@@ -3,9 +3,12 @@ import '../ui/theme/app_theme.dart';
 import 'circuit/circuit_page.dart';
 import 'codebreaker/codebreaker_page.dart';
 import 'game_definition.dart';
+import 'lightsout/lightsout_page.dart';
 import 'memory/memory_page.dart';
 import 'onestroke/onestroke_page.dart';
+import 'queens/queens_page.dart';
 import 'schulte/schulte_page.dart';
+import 'shikaku/shikaku_page.dart';
 import 'twentyfour/twentyfour_page.dart';
 
 /// 所有已上架的小游戏。首页按此顺序展示。
@@ -166,5 +169,76 @@ final List<GameDefinition> gameRegistry = [
     ],
     builder: (context, session) => TwentyFourGameView(session: session),
     coverBuilder: (context) => const TwentyFourCover(),
+  ),
+  GameDefinition(
+    id: 'queens',
+    title: '皇冠',
+    tagline: '每行每列每块色区各放一顶，彼此不相邻',
+    category: GameCategory.decode,
+    color: AppColors.lemon,
+    scoreKind: ScoreKind.timeMs,
+    modes: const [
+      GameMode(id: 'q5', label: '5×5', description: '入门'),
+      GameMode(id: 'q6', label: '6×6', description: '简单'),
+      GameMode(id: 'q7', label: '7×7', description: '进阶'),
+      GameMode(id: 'q8', label: '8×8', description: '困难'),
+      GameMode(id: 'q9', label: '9×9', description: '大师'),
+    ],
+    rules: const [
+      '棋盘被分成了与边长数量相同的彩色区域。',
+      '每一行、每一列、每一个彩色区域里，都必须有且只有一顶皇冠。',
+      '任意两顶皇冠不能相邻——上下左右和四个斜角都不能挨着。',
+      '单击格子或手指拖动在「空白」与「×（排除）」之间切换；双击格子放置皇冠（点击皇冠可取下）。',
+      '每道题都有唯一解；卡住时可用「提示」（每局 3 次）揭晓并锁定一格，用过提示不计入最佳纪录。',
+    ],
+    builder: (context, session) => QueensGameView(session: session),
+    coverBuilder: (context) => const QueensCover(),
+  ),
+  GameDefinition(
+    id: 'shikaku',
+    title: '数方',
+    tagline: '按数字大小框出矩形，刚好铺满整张棋盘',
+    category: GameCategory.math,
+    color: AppColors.mint,
+    scoreKind: ScoreKind.timeMs,
+    modes: const [
+      GameMode(id: 'sk5', label: '5×5', description: '入门'),
+      GameMode(id: 'sk6', label: '6×6', description: '简单'),
+      GameMode(id: 'sk7', label: '7×7', description: '进阶'),
+      GameMode(id: 'sk8', label: '8×8', description: '困难'),
+      GameMode(id: 'sk9', label: '9×9', description: '专家'),
+      GameMode(id: 'sk10', label: '10×10', description: '大师'),
+    ],
+    rules: const [
+      '把整个棋盘划分成若干互不重叠的矩形（或正方形）。',
+      '每个矩形里必须恰好包含一个数字，且矩形占用的格子总数等于这个数字。',
+      '手指在空白处拖动即可框出矩形；不能与已有矩形重叠，点击已有矩形可将其清除。',
+      '每道题都有唯一解；每局可用 3 次「提示」直接锁定某一格所属的正确矩形，用过提示不计入最佳纪录。',
+    ],
+    builder: (context, session) => ShikakuGameView(session: session),
+    coverBuilder: (context) => const ShikakuCover(),
+  ),
+  GameDefinition(
+    id: 'lightsout',
+    title: '电灯',
+    tagline: '牵一发动全身，点亮每一盏电灯',
+    category: GameCategory.casual,
+    color: AppColors.sky,
+    scoreKind: ScoreKind.moves,
+    modes: const [
+      GameMode(id: 'lo3', label: '3×3', description: '入门 · 最少 2–3 步'),
+      GameMode(id: 'lo4e', label: '4×4 简', description: '简单 · 最少 3–4 步'),
+      GameMode(id: 'lo4', label: '4×4', description: '标准 · 最少 5–7 步'),
+      GameMode(id: 'lo5e', label: '5×5 简', description: '进阶 · 最少 5–7 步'),
+      GameMode(id: 'lo5', label: '5×5', description: '困难 · 最少 8–12 步'),
+      GameMode(id: 'lo6', label: '6×6', description: '大师 · 最少 10–16 步'),
+    ],
+    rules: const [
+      '点击任意一格，会同时切换它自己与上下左右相邻格的电灯开关（灭变亮、亮变灭）。',
+      '把棋盘上所有电灯全部点亮即可过关，步数越少成绩越好。',
+      '每局初始局面都保证有解；卡住时可用「提示」（每局 3 次）标出当前最少步数解法中的一步，用过提示不计入最佳纪录。',
+    ],
+    builder: (context, session) => LightsOutGameView(session: session),
+    coverBuilder: (context) => const LightsOutCover(),
   ),
 ];

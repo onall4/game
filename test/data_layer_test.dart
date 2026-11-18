@@ -11,16 +11,16 @@ import 'package:game/core/storage/key_value_store.dart';
 GameResult _result({
   String game = 'circuit',
   String mode = 'easy',
-  bool won = true,
+  bool assisted = false,
   int score = 1000,
   ScoreKind kind = ScoreKind.timeMs,
 }) => GameResult(
   gameId: game,
   modeId: mode,
-  won: won,
   score: score,
   scoreKind: kind,
   durationMs: 5000,
+  assisted: assisted,
 );
 
 void main() {
@@ -36,12 +36,11 @@ void main() {
       out = await s.records.recordResult(_result(score: 2000));
       expect(out.isNewBest, isTrue);
       expect(out.previousBest, 3000);
-      out = await s.records.recordResult(_result(won: false, score: 1));
-      expect(out.isNewBest, isFalse, reason: '失败的对局不计最佳');
+      out = await s.records.recordResult(_result(assisted: true, score: 1));
+      expect(out.isNewBest, isFalse, reason: '使用提示的对局不计最佳');
 
       final r = s.records.recordOf('circuit', ScoreKind.timeMs);
       expect(r.plays, 4);
-      expect(r.wins, 3);
       expect(r.mode('easy').best, 2000);
       expect(r.dirty, isTrue);
       expect(s.outbox.length, 4);
@@ -64,12 +63,21 @@ void main() {
       expect(out.isNewBest, isTrue);
     });
 
-    test('清空纪录', () async {
-      final s = await AppServices.fromStore(MemoryStore());
+    test('清空纪录同时清除对局存档', () async {
+      final store = MemoryStore();
+      final s = await AppServices.fromStore(store);
       await s.records.recordResult(_result());
+      s.progress.save('circuit', 'easy', {'moves': 3});
+      await s.progress.flush();
+      expect(s.progress.has('circuit', 'easy'), isTrue);
+
       await s.resetProgress();
       expect(s.records.all, isEmpty);
       expect(s.outbox.length, 0);
+      expect(s.progress.has('circuit', 'easy'), isFalse);
+
+      final s2 = await AppServices.fromStore(store);
+      expect(s2.progress.has('circuit', 'easy'), isFalse);
     });
 
     test('损坏的 JSON 不会导致崩溃', () async {
@@ -88,7 +96,7 @@ void main() {
       final a = GameRecord(
         gameId: 'g',
         scoreKind: ScoreKind.moves,
-        modes: const {'easy': ModeStats(plays: 5, wins: 3, best: 20)},
+        modes: const {'easy': ModeStats(plays: 5, best: 20)},
         updatedAt: DateTime(2026, 1, 1),
         dirty: true,
       );
@@ -96,8 +104,8 @@ void main() {
         gameId: 'g',
         scoreKind: ScoreKind.moves,
         modes: const {
-          'easy': ModeStats(plays: 3, wins: 3, best: 15),
-          'hard': ModeStats(plays: 1, wins: 0),
+          'easy': ModeStats(plays: 3, best: 15),
+          'hard': ModeStats(plays: 1),
         },
         updatedAt: DateTime(2026, 2, 1),
       );
@@ -187,7 +195,7 @@ class _FakeApi implements RemoteGameApi {
     GameRecord(
       gameId: 'circuit',
       scoreKind: ScoreKind.timeMs,
-      modes: const {'easy': ModeStats(plays: 1, wins: 1, best: 1500)},
+      modes: const {'easy': ModeStats(plays: 1, best: 1500)},
       updatedAt: DateTime(2026, 1, 1),
     ),
   ];

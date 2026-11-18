@@ -21,6 +21,12 @@ class SharedPrefsStore extends KeyValueStore {
   }
 
   @override
+  Iterable<String> get keys => _prefs.keys
+      .where((k) => k.startsWith(prefix))
+      .map((k) => k.substring(prefix.length))
+      .toList(growable: false);
+
+  @override
   String? getString(String key) => _prefs.getString('$prefix$key');
 
   @override

@@ -77,11 +77,20 @@ class _MemoryGameViewState extends State<MemoryGameView> {
     _game =
         restored ??
         MemoryGame(pairs: pairs, random: widget.session.createRandom());
-    _clock = GameClock(
-      initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
+    final initialElapsed = restored == null
+        ? 0
+        : saved!['elapsedMs'] as int? ?? 0;
+    _clock = widget.session.createClock(
+      initialElapsedMs: initialElapsed,
+      onBackground: _save,
     );
-    // 用时从进入游戏开始算；已完成的对局停在最终用时
-    if (!_game.completed) _clock.start();
+    // 翻翻乐牌面全盖住：首次翻牌才开始计时；恢复已开局的对局则接着计
+    final hasStarted =
+        restored != null &&
+        (initialElapsed > 0 ||
+            _game.moves > 0 ||
+            _game.cards.any((c) => c.faceUp));
+    if (hasStarted && !_game.completed) _clock.start();
   }
 
   void _save() {
@@ -102,6 +111,7 @@ class _MemoryGameViewState extends State<MemoryGameView> {
     final haptics = AppScope.of(context).haptics;
     final outcome = _game.flip(i);
     if (outcome == FlipOutcome.ignored) return;
+    if (!_game.completed) _clock.start();
     setState(() {});
 
     switch (outcome) {
@@ -126,7 +136,6 @@ class _MemoryGameViewState extends State<MemoryGameView> {
   void _finish() {
     widget.session.onFinish(
       GameFinish(
-        won: true,
         score: _game.moves,
         durationMs: _clock.elapsedMs,
         details: [
@@ -194,23 +203,25 @@ class _MemoryGameViewState extends State<MemoryGameView> {
                 final w = min(byWidth, byHeight);
                 final h = w / aspect;
                 return Center(
-                  child: SizedBox(
-                    width: w * cols + gap * (cols - 1),
-                    height: h * rows + gap * (rows - 1),
-                    child: Wrap(
-                      spacing: gap,
-                      runSpacing: gap,
-                      children: [
-                        for (var i = 0; i < _game.cards.length; i++)
-                          SizedBox(
-                            width: w,
-                            height: h,
-                            child: _FlipCard(
-                              card: _game.cards[i],
-                              onTap: () => _flip(i),
+                  child: RepaintBoundary(
+                    child: SizedBox(
+                      width: w * cols + gap * (cols - 1),
+                      height: h * rows + gap * (rows - 1),
+                      child: Wrap(
+                        spacing: gap,
+                        runSpacing: gap,
+                        children: [
+                          for (var i = 0; i < _game.cards.length; i++)
+                            SizedBox(
+                              width: w,
+                              height: h,
+                              child: _FlipCard(
+                                card: _game.cards[i],
+                                onTap: () => _flip(i),
+                              ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 );

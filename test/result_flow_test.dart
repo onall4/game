@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:game/core/app_services.dart';
 import 'package:game/core/data/models/score_kind.dart';
 import 'package:game/core/storage/key_value_store.dart';
+import 'package:game/core/storage/storage_keys.dart';
+import 'package:game/games/game_clock.dart';
 import 'package:game/games/game_definition.dart';
 import 'package:game/ui/game/game_page.dart';
 import 'package:game/ui/theme/app_theme.dart';
@@ -19,19 +21,34 @@ class _FakeBoard extends StatefulWidget {
 
 class _FakeBoardState extends State<_FakeBoard> {
   late bool done = widget.session.savedState?['done'] == true;
+  late final GameClock clock = widget.session.createClock(
+    onBackground: () => widget.session.saveProgress({'done': done}),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!done) clock.start();
+  }
+
+  @override
+  void dispose() {
+    clock.dispose();
+    super.dispose();
+  }
 
   void _finish() {
+    clock.stop();
     setState(() => done = true);
     // 与真实游戏一致：先保存最终状态，再上报完成
     widget.session.saveProgress({'done': true});
-    widget.session.onFinish(
-      const GameFinish(won: true, score: 7, durationMs: 1000),
-    );
+    widget.session.onFinish(const GameFinish(score: 7, durationMs: 1000));
   }
 
   @override
   Widget build(BuildContext context) => Column(
     children: [
+      GameClockPill(clock: clock),
       Text(done ? '已完成' : '进行中'),
       if (!done) TextButton(onPressed: _finish, child: const Text('完成')),
     ],
@@ -84,10 +101,13 @@ void main() {
     expect(find.text('挑战成功！'), findsNothing);
     expect(find.text('已完成'), findsOneWidget);
 
-    // 奖杯再次打开；下滑也能收起
+    // 奖杯再次打开；点种子行可直接复制；下滑也能收起
     await tester.tap(find.byTooltip('查看成绩'));
     await tester.pumpAndSettle();
     expect(find.text('挑战成功！'), findsOneWidget);
+    await tester.tap(find.text('种子'));
+    await tester.pumpAndSettle();
+    expect(find.text('种子 · 已复制'), findsOneWidget);
     await tester.drag(find.text('挑战成功！'), const Offset(0, 600));
     await tester.pumpAndSettle();
     expect(find.text('挑战成功！'), findsNothing);
@@ -198,5 +218,38 @@ void main() {
     await tester.tap(find.text('用这个种子开始'));
     await tester.pumpAndSettle();
     expect(find.text('这个种子来自更新的版本，请先更新 app'), findsOneWidget);
+  });
+
+  testWidgets('弹窗期间暂停计时；切到后台时自动暂停并立即落盘存档', (tester) async {
+    await enterGame(tester);
+    final clock = tester
+        .widget<GameClockPill>(find.byType(GameClockPill))
+        .clock;
+    expect(clock.isRunning, isTrue);
+
+    // 打开玩法说明时暂停计时，关闭后恢复
+    await tester.tap(find.byTooltip('玩法'));
+    await tester.pumpAndSettle();
+    expect(clock.isRunning, isFalse);
+    await tester.tap(find.text('明白了'));
+    await tester.pumpAndSettle();
+    expect(clock.isRunning, isTrue);
+
+    // 尚未离开页面直接切到后台：立即暂停计时并写入底层存储
+    expect(
+      services.store.getJson(StorageKeys.progress('fake', 'only')),
+      isNull,
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    addTearDown(
+      () => tester.binding.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      ),
+    );
+    expect(clock.isRunning, isFalse);
+    expect(
+      services.store.getJson(StorageKeys.progress('fake', 'only')),
+      isNotNull,
+    );
   });
 }

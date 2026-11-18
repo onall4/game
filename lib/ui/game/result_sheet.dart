@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../core/app_services.dart';
 import '../../core/data/repositories/game_record_repository.dart';
 import '../../games/game_definition.dart';
 import '../../games/seed.dart';
@@ -32,7 +34,7 @@ Future<void> showResultSheet(
   );
 }
 
-class _ResultSheet extends StatelessWidget {
+class _ResultSheet extends StatefulWidget {
   const _ResultSheet({
     required this.game,
     required this.mode,
@@ -50,10 +52,26 @@ class _ResultSheet extends StatelessWidget {
   final bool customSeed;
 
   @override
+  State<_ResultSheet> createState() => _ResultSheetState();
+}
+
+class _ResultSheetState extends State<_ResultSheet> {
+  bool _copied = false;
+
+  void _copySeed(GameSeed seed) {
+    Clipboard.setData(ClipboardData(text: seed.code));
+    AppScope.of(context).haptics.tap();
+    setState(() => _copied = true);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final game = widget.game;
+    final mode = widget.mode;
+    final finish = widget.finish;
+    final outcome = widget.outcome;
     final kind = game.scoreKind;
     final best = outcome.record.mode(mode.id).best;
-    final won = finish.won;
 
     return SafeArea(
       child: Padding(
@@ -83,20 +101,15 @@ class _ResultSheet extends StatelessWidget {
                 Container(
                   width: 72,
                   height: 72,
-                  decoration: chunkyDecoration(
-                    color: won ? game.color : AppColors.creamDeep,
-                    radius: 22,
-                  ),
-                  child: Icon(
-                    won
-                        ? Icons.emoji_events_rounded
-                        : Icons.sentiment_dissatisfied_rounded,
+                  decoration: chunkyDecoration(color: game.color, radius: 22),
+                  child: const Icon(
+                    Icons.emoji_events_rounded,
                     size: 40,
                     color: AppColors.ink,
                   ),
                 ),
                 const SizedBox(height: 14),
-                Text(won ? '挑战成功！' : '差一点点…', style: AppText.display),
+                const Text('挑战成功！', style: AppText.display),
                 const SizedBox(height: 6),
                 Text(
                   finish.message ?? '${game.title} · ${mode.label}',
@@ -107,7 +120,7 @@ class _ResultSheet extends StatelessWidget {
                   const SizedBox(height: 12),
                   const TagChip(label: '★ 新纪录', color: AppColors.lemon),
                 ],
-                if (customSeed) ...[
+                if (widget.customSeed) ...[
                   const SizedBox(height: 10),
                   Text('指定种子，不计入纪录', style: AppText.caption),
                 ] else if (finish.assisted) ...[
@@ -124,11 +137,11 @@ class _ResultSheet extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      if (won) _row(kind.label, kind.format(finish.score)),
+                      _row(kind.label, kind.format(finish.score)),
                       for (final (label, value) in finish.details)
                         _row(label, value),
                       _row('最佳纪录', best == null ? '暂无' : kind.format(best)),
-                      if (seed case final seed?) _row('种子', '#${seed.code}'),
+                      if (widget.seed case final seed?) _seedRow(seed),
                     ],
                   ),
                 ),
@@ -159,6 +172,31 @@ class _ResultSheet extends StatelessWidget {
         const Spacer(),
         Text(value, style: AppText.number.copyWith(fontSize: 17)),
       ],
+    ),
+  );
+
+  Widget _seedRow(GameSeed seed) => Semantics(
+    button: true,
+    label: '复制种子',
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _copySeed(seed),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Text(_copied ? '种子 · 已复制' : '种子', style: AppText.body),
+            const Spacer(),
+            Icon(
+              _copied ? Icons.check_rounded : Icons.copy_rounded,
+              size: 15,
+              color: _copied ? AppColors.ink : AppColors.inkSoft,
+            ),
+            const SizedBox(width: 5),
+            Text('#${seed.code}', style: AppText.number.copyWith(fontSize: 17)),
+          ],
+        ),
+      ),
     ),
   );
 }

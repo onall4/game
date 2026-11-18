@@ -22,15 +22,13 @@ void main() {
       expect(g.tap(0), SchulteTap.ignored, reason: '完成后点击无效');
     });
 
-    test('点错计失误；点已找过的数字不算失误', () {
+    test('点错计失误；已点过的数字不特殊豁免', () {
       final g = SchulteGame(const SchulteConfig(size: 3), random: Random(2));
       expect(g.tap(g.cells.indexOf(5)), SchulteTap.wrong);
       expect(g.mistakes, 1);
       expect(g.tap(g.cells.indexOf(1)), SchulteTap.correct);
-      expect(g.tap(g.cells.indexOf(1)), SchulteTap.ignored);
-      expect(g.mistakes, 1);
-      expect(g.isFound(1), isTrue);
-      expect(g.isFound(2), isFalse);
+      expect(g.tap(g.cells.indexOf(1)), SchulteTap.wrong);
+      expect(g.mistakes, 2);
     });
 
     test('倒序从最大的数点到 1', () {

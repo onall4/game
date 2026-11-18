@@ -199,14 +199,15 @@ class OneStrokePuzzle {
     if (completed || hintsLeft <= 0 || walls[i] || _hinted.contains(i)) {
       return false;
     }
-    _solution ??= _referenceSolution();
+    final solution = _solution ??= _referenceSolution();
+    if (solution == null) return false;
     _hinted.add(i);
     return true;
   }
 
   /// 选参考路线：优先找一条接着玩家当前路线往下走的解，这样提示能直接用上；
   /// 当前路线已经走不通时，再从起点重新找。
-  List<int> _referenceSolution() {
+  List<int>? _referenceSolution() {
     if (_path.length > 1) {
       for (var attempt = 0; attempt < 30; attempt++) {
         final p = findPath(
@@ -220,7 +221,7 @@ class OneStrokePuzzle {
         if (p != null) return p;
       }
     }
-    return solve()!;
+    return solve();
   }
 
   /// 从起点出发走遍所有空格的一条路径（用于测试）；找不到时返回 null。
@@ -238,8 +239,19 @@ class OneStrokePuzzle {
       );
       if (path != null) return path;
     }
-    // 题目生成时已确认有解，这里不限搜索量兜底
-    return findPath(cols, rows, walls, start, budget: 1 << 30);
+    // 扩大预算再随机多轮尝试，避免无上限回溯卡住主线程
+    for (var attempt = 200; attempt < 260; attempt++) {
+      final path = findPath(
+        cols,
+        rows,
+        walls,
+        start,
+        random: SeededRandom(attempt),
+        budget: 25000,
+      );
+      if (path != null) return path;
+    }
+    return findPath(cols, rows, walls, start, budget: 200000);
   }
 
   // ---------------------------------------------------------------------------

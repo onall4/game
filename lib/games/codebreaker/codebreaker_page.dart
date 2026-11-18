@@ -69,6 +69,7 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
   /// 输入区的每一位（null 表示还没填）与当前要填的位置。
   late List<int?> _slots;
   int _cursor = 0;
+  int? _justAddedIndex;
   final Set<int> _excluded = {};
   final ScrollController _scroll = ScrollController();
   late final AnimationController _shake = AnimationController(
@@ -128,8 +129,9 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     _game =
         restored ??
         CodeBreakerGame(config, random: widget.session.createRandom());
-    _clock = GameClock(
+    _clock = widget.session.createClock(
       initialElapsedMs: restored == null ? 0 : saved!['elapsedMs'] as int? ?? 0,
+      onBackground: _save,
     );
     // 用时从进入游戏开始算；已完成的对局停在最终用时
     if (!_game.won) _clock.start();
@@ -245,6 +247,7 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     setState(() {
       _slots = List<int?>.filled(_config.length, null);
       _cursor = 0;
+      _justAddedIndex = _game.history.length - 1;
     });
     row.feedback.exact > 0 ? haptics.light() : haptics.tap();
 
@@ -263,7 +266,6 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
     if (_game.won) {
       widget.session.onFinish(
         GameFinish(
-          won: true,
           score: _game.attemptsUsed,
           durationMs: _clock.elapsedMs,
           details: [('用时', formatDuration(_clock.elapsedMs))],
@@ -305,8 +307,15 @@ class _CodeBreakerGameViewState extends State<CodeBreakerGameView>
                       controller: _scroll,
                       itemCount: _game.history.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) =>
-                          _HistoryRow(index: i + 1, row: _game.history[i]),
+                      itemBuilder: (context, i) => _HistoryRow(
+                        key: ValueKey('history-$i'),
+                        index: i + 1,
+                        row: _game.history[i],
+                        animate: i == _justAddedIndex,
+                        onAnimated: () {
+                          if (_justAddedIndex == i) _justAddedIndex = null;
+                        },
+                      ),
                     ),
             ),
           ),
@@ -418,19 +427,66 @@ class _Legend extends StatelessWidget {
 }
 
 class _HistoryRow extends StatelessWidget {
-  const _HistoryRow({required this.index, required this.row});
+  const _HistoryRow({
+    super.key,
+    required this.index,
+    required this.row,
+    this.animate = false,
+    this.onAnimated,
+  });
 
   final int index;
   final GuessRow row;
+  final bool animate;
+  final VoidCallback? onAnimated;
 
   @override
   Widget build(BuildContext context) {
     // 6 位密码时收紧间距，让数字块尽量保持大一些
     final compact = row.digits.length > 4;
+    final card = ChunkyBox(
+      radius: 14,
+      shadow: 2.5,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: compact ? 22 : 28,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text('#$index', style: AppText.caption, maxLines: 1),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final (i, d) in row.digits.indexed) ...[
+                      if (i > 0) SizedBox(width: compact ? 4 : 6),
+                      _DigitToken(digit: d, size: 34),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _FeedbackSummary(feedback: row.feedback),
+        ],
+      ),
+    );
+    if (!animate) return card;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
+      onEnd: onAnimated,
       builder: (context, t, child) => Opacity(
         opacity: t,
         child: Transform.translate(
@@ -438,46 +494,7 @@ class _HistoryRow extends StatelessWidget {
           child: child,
         ),
       ),
-      child: ChunkyBox(
-        radius: 14,
-        shadow: 2.5,
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 8 : 10,
-          vertical: 8,
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: compact ? 22 : 28,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text('#$index', style: AppText.caption, maxLines: 1),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final (i, d) in row.digits.indexed) ...[
-                        if (i > 0) SizedBox(width: compact ? 4 : 6),
-                        _DigitToken(digit: d, size: 34),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            _FeedbackSummary(feedback: row.feedback),
-          ],
-        ),
-      ),
+      child: card,
     );
   }
 }

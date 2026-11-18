@@ -6,6 +6,7 @@ import 'package:game/core/data/models/score_kind.dart';
 import 'package:game/core/storage/key_value_store.dart';
 import 'package:game/games/onestroke/onestroke_logic.dart';
 import 'package:game/games/twentyfour/twentyfour_logic.dart';
+import 'package:game/ui/theme/app_theme.dart';
 
 Future<AppServices> _pumpApp(WidgetTester tester) async {
   tester.view.physicalSize = const Size(390 * 3, 844 * 3);
@@ -51,14 +52,29 @@ void main() {
       matching: find.text('$n'),
     );
 
+    Color tileColor(int n) {
+      final c = tester.widget<AnimatedContainer>(
+        find.ancestor(of: number(n), matching: find.byType(AnimatedContainer)),
+      );
+      return (c.decoration! as BoxDecoration).color!;
+    }
+
     await tester.tap(number(9));
+    await tester.pump();
+    expect(tileColor(9), AppColors.coral, reason: '点错短暂闪红');
     await tester.pump(const Duration(milliseconds: 300));
+    expect(tileColor(9), AppColors.paper);
     expect(_statValue(tester, '失误'), '1');
 
     for (var n = 1; n <= 9; n++) {
       expect(_statValue(tester, '下一个'), '$n');
       await tester.tap(number(n));
       await tester.pump();
+      if (n == 1) {
+        expect(tileColor(1), AppColors.mint, reason: '点对短暂闪绿反馈');
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tileColor(1), AppColors.paper, reason: '闪过之后恢复统一外观，不留标记');
+      }
     }
     await tester.pumpAndSettle();
     expect(find.text('挑战成功！'), findsOneWidget);

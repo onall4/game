@@ -46,21 +46,77 @@ class _RoundResult {
   final RecordOutcome outcome;
 }
 
-class _GamePageState extends State<GamePage> {
+class _GamePageState extends State<GamePage> with WidgetsBindingObserver {
   late GameMode _mode;
+  late ProgressRepository _progress;
   int _round = 0;
   _RoundHandle _handle = _RoundHandle();
   _RoundResult? _result;
   bool _initialized = false;
+  bool _inBackground = false;
+  int _modalDepth = 0;
+  Animation<double>? _routeAnimation;
+  final ValueNotifier<bool> _paused = ValueNotifier(false);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final services = AppScope.of(context);
+    _progress = services.progress;
+    final routeAnim = ModalRoute.of(context)?.animation;
+    if (routeAnim != _routeAnimation) {
+      _routeAnimation?.removeStatusListener(_onRouteStatus);
+      _routeAnimation = routeAnim;
+      _routeAnimation?.addStatusListener(_onRouteStatus);
+      _syncPaused();
+    }
     if (_initialized) return;
     _initialized = true;
-    final settings = AppScope.of(context).settings;
-    _mode = widget.game.modeById(settings.lastMode(widget.game.id));
+    _mode = widget.game.modeById(services.settings.lastMode(widget.game.id));
     _loadRound();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _routeAnimation?.removeStatusListener(_onRouteStatus);
+    _paused.dispose();
+    _progress.flush();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _inBackground =
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden;
+    if (_inBackground) _progress.flush();
+  }
+
+  void _onRouteStatus(AnimationStatus _) => _syncPaused();
+
+  void _syncPaused() {
+    final anim = _routeAnimation;
+    final transitioning = anim != null && !anim.isCompleted;
+    _paused.value = _modalDepth > 0 || transitioning;
+  }
+
+  Future<T> _withModalPause<T>(Future<T> Function() action) async {
+    _modalDepth++;
+    _syncPaused();
+    try {
+      return await action();
+    } finally {
+      _modalDepth--;
+      if (mounted) _syncPaused();
+    }
   }
 
   /// 为当前模式准备一局的句柄：有存档时沿用存档里的种子，没有则随机抽一个；
@@ -140,6 +196,7 @@ class _GamePageState extends State<GamePage> {
     return GameSession(
       mode: _mode,
       seed: seed,
+      paused: _paused,
       savedState: progress.load(gameId, modeId),
       saveProgress: (state) {
         if (!handle.active) return;
@@ -150,6 +207,7 @@ class _GamePageState extends State<GamePage> {
           if (handle.resultJson != null)
             ProgressRepository.resultKey: handle.resultJson,
         });
+        if (_inBackground) progress.flush();
       },
       onFinish: (finish) => _handleFinish(finish, modeId, handle),
     );
@@ -164,7 +222,7 @@ class _GamePageState extends State<GamePage> {
     final gameId = widget.game.id;
     final RecordOutcome outcome;
     if (handle.customSeed) {
-      // 指定种子的对局不计入纪录（局数、胜场、最佳、时长），也不上传
+      // 指定种子的对局不计入纪录（局数、最佳、时长），也不上传
       outcome = RecordOutcome(
         record: services.records.recordOf(gameId, widget.game.scoreKind),
         isNewBest: false,
@@ -173,7 +231,6 @@ class _GamePageState extends State<GamePage> {
       final result = GameResult(
         gameId: gameId,
         modeId: modeId,
-        won: finish.won,
         score: finish.score,
         scoreKind: widget.game.scoreKind,
         durationMs: finish.durationMs,
@@ -183,7 +240,7 @@ class _GamePageState extends State<GamePage> {
       // 接入服务器后，这里会在后台把结果推送上去；离线模式下是空操作。
       services.sync.sync();
     }
-    finish.won ? services.haptics.success() : services.haptics.error();
+    services.haptics.success();
 
     // 把结算数据写进这一局的存档：退出再进来仍是完成画面，奖杯可查看成绩
     if (handle.active) {
@@ -224,24 +281,44 @@ class _GamePageState extends State<GamePage> {
   /// 种子面板：复制本局种子，或输入种子开始新的一局。
   Future<void> _showSeedSheet() async {
     AppScope.of(context).haptics.tap();
-    final seed = await showModalBottomSheet<GameSeed>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) =>
-          _SeedSheet(game: widget.game, current: _handle.seed),
+    final seed = await _withModalPause(
+      () => showModalBottomSheet<GameSeed>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) =>
+            _SeedSheet(game: widget.game, current: _handle.seed),
+      ),
     );
     if (seed == null || !mounted) return;
     _restart(seed: seed);
   }
 
-  void _showRules() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _RulesSheet(game: widget.game),
+  Future<void> _showRules() async {
+    AppScope.of(context).haptics.tap();
+    await _withModalPause(
+      () => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => _RulesSheet(game: widget.game),
+      ),
     );
+  }
+
+  Future<void> _onTapRestart() async {
+    AppScope.of(context).haptics.tap();
+    if (_result != null) {
+      _restart();
+      return;
+    }
+    final ok = await _withModalPause(
+      () => showDialog<bool>(
+        context: context,
+        builder: (context) => _RestartDialog(color: widget.game.color),
+      ),
+    );
+    if (ok == true && mounted) _restart();
   }
 
   @override
@@ -318,10 +395,7 @@ class _GamePageState extends State<GamePage> {
                     icon: Icons.refresh_rounded,
                     tooltip: '重新开始',
                     color: game.color,
-                    onTap: () {
-                      AppScope.of(context).haptics.tap();
-                      _restart();
-                    },
+                    onTap: _onTapRestart,
                   ),
                 ],
               ),
@@ -695,6 +769,57 @@ class _SeedSheetState extends State<_SeedSheet> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RestartDialog extends StatelessWidget {
+  const _RestartDialog({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: ChunkyBox(
+        color: AppColors.cream,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('重新开始？', style: AppText.title),
+            const SizedBox(height: 8),
+            const Text(
+              '放弃当前这一局，换一局新的？',
+              style: AppText.body,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: ChunkyButton(
+                    label: '取消',
+                    color: AppColors.paper,
+                    expand: true,
+                    onTap: () => Navigator.of(context).pop(false),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ChunkyButton(
+                    label: '重新开始',
+                    color: color,
+                    expand: true,
+                    onTap: () => Navigator.of(context).pop(true),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
