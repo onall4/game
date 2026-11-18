@@ -36,6 +36,7 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first, // 首页主列表（另有横向分类列表）
     );
+    await tester.ensureVisible(find.text(title));
     await tester.pumpAndSettle();
   }
 
@@ -117,11 +118,7 @@ void main() {
     testWidgets('「${game.title}」在窄屏 + 大字体下各难度都不溢出', (tester) async {
       await pumpApp(tester, size: const Size(360, 640), textScale: 1.3);
       // 小屏上卡片可能在首屏之外，先滚动到可见
-      await tester.scrollUntilVisible(
-        find.text(game.title),
-        200,
-        scrollable: find.byType(Scrollable).first, // 首页主列表（另有横向分类列表）
-      );
+      await showOnHome(tester, game.title);
       await tester.tap(find.text(game.title));
       await tester.pumpAndSettle();
       for (final m in game.modes) {

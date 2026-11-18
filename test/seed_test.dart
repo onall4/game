@@ -8,11 +8,17 @@ import 'package:game/games/codebreaker/codebreaker_page.dart';
 import 'package:game/games/game_registry.dart';
 import 'package:game/games/memory/memory_logic.dart';
 import 'package:game/games/memory/memory_page.dart';
+import 'package:game/games/lightsout/lightsout_logic.dart';
+import 'package:game/games/lightsout/lightsout_page.dart';
 import 'package:game/games/onestroke/onestroke_logic.dart';
 import 'package:game/games/onestroke/onestroke_page.dart';
+import 'package:game/games/queens/queens_logic.dart';
+import 'package:game/games/queens/queens_page.dart';
 import 'package:game/games/schulte/schulte_logic.dart';
 import 'package:game/games/schulte/schulte_page.dart';
 import 'package:game/games/seed.dart';
+import 'package:game/games/shikaku/shikaku_logic.dart';
+import 'package:game/games/shikaku/shikaku_page.dart';
 import 'package:game/games/twentyfour/twentyfour_logic.dart';
 import 'package:game/games/twentyfour/twentyfour_page.dart';
 
@@ -60,6 +66,25 @@ String _fingerprint(String gameId, String modeId, GameSeed seed) {
       final level = TwentyFourGameView.levelFor(modeId);
       final game = TwentyFourGame(level, random: random);
       return [for (final p in game.puzzles) p.join(',')].join(' ');
+    case 'queens':
+      final size = QueensGameView.sizeFor(modeId);
+      final p = QueensPuzzle.generate(size, random: random);
+      return '${p.regions.join()}/${p.solution.join()}';
+    case 'shikaku':
+      final cfg = ShikakuGameView.configFor(modeId);
+      final p = ShikakuPuzzle.generate(
+        cfg.size,
+        maxArea: cfg.maxArea,
+        random: random,
+      );
+      return [
+        for (var i = 0; i < p.clues.length; i++)
+          if (p.clues[i] > 0) '$i:${p.clues[i]}',
+      ].join(',');
+    case 'lightsout':
+      final cfg = LightsOutGameView.configFor(modeId);
+      final g = LightsOutGame.generate(cfg, random: random);
+      return (g.toJson()['lit'] as List).join(',');
   }
   throw ArgumentError(gameId);
 }
@@ -260,7 +285,25 @@ void main() {
           't4': '8,12,6,7 10,6,7,3 13,3,4,9 8,13,8,12 3,9,11,3',
           't5': '10,4,10,2 7,7,3,3 2,10,7,7',
         },
+        'queens': {
+          'q5': '0221102211221112211322411/03142',
+          'q7': '2221330221130024443362443336444333644553664433366/6204135',
+          'q9':
+              '00000011103031111123331111133331111156633311455666311156666311'
+              '8556667778566667888/460281357',
+        },
+        'shikaku': {
+          'sk5': '1:3,4:6,7:4,10:3,18:4,20:2,23:3',
+          'sk8': '6:12,10:8,16:12,42:12,45:10,48:2,56:2,60:2,62:2,63:2',
+          'sk10': '14:7,17:5,26:10,42:15,43:9,58:10,69:7,71:15,76:15,79:3,84:2,94:2',
+        },
+        'lightsout': {
+          'lo3': '1,4,8',
+          'lo5': '1,3,4,5,7,9,11,13,14,17,19,21,22,24',
+          'lo6': '0,2,3,5,6,8,10,11,13,15,17,18,19,20,21,25,26,27,28,29,31',
+        },
       };
+      expect(expected.keys.toSet(), {for (final g in gameRegistry) g.id});
       for (final MapEntry(key: gameId, value: modes) in expected.entries) {
         final game = gameRegistry.firstWhere((g) => g.id == gameId);
         expect(game.seedVersion, 1, reason: '版本变了就要更新这里的期望值');
